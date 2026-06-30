@@ -30,12 +30,12 @@ class LLMRAGHandler:
         add_pdf_to_context(self, filePath: Path): Adds a PDF file to the context for retrieval.
 
     """
-    def __init__(self, model="granite3.3"):
-        """        
+    def __init__(self, model="gemma:2b"):
+        """
         Initializes the LLMRAGHandler with the specified model.
 
         Args:
-            model (str): The model to use for the language model and vector store. Default is "granite3.3".
+            model (str): The model to use for the language model and vector store. Default is "gemma:2b".
         """
         self.llm = ChatOllama(model=model)
         self.vector_store = VectorStore(llm_model=model)

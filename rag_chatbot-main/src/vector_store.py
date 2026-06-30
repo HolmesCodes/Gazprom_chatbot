@@ -14,7 +14,7 @@ import faiss
 import bs4
 
 # Constants
-model = "granite3.3"
+model = "gemma:2b"
 llm = ChatOllama(model=model)
 VECTOR_STORE_PATH = Path("faiss_index")
 
@@ -70,7 +70,7 @@ class VectorStore:
         website_to_documents(urls: list[str]) -> list[Document]:
             Converts URLs to LangChain Document objects with metadata.
     """
-    def __init__(self, vector_store_path=VECTOR_STORE_PATH, llm_model="granite3.3",
+    def __init__(self, vector_store_path=VECTOR_STORE_PATH, llm_model="gemma:2b",
                   chunk_size=500, chunk_overlap=50, persist=True, index_path="faiss_index"):
         """
         Initialize the VectorStore class.
