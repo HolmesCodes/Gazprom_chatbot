@@ -1,12 +1,15 @@
+import os
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from pathlib import Path
-from langchain_ollama import ChatOllama
-from langchain_core.prompts import PromptTemplate
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 from typing import List
 from langchain_core.documents import Document
 from vector_store import VectorStore
-from langchain_core.output_parsers import StrOutputParser
-from langchain.chains import create_retrieval_chain
+
+DEFAULT_GEMINI_API_KEY = "" #вставить апи
+# DEFAULT_GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent"
 
 class LLMRAGHandler:
     """
@@ -30,67 +33,155 @@ class LLMRAGHandler:
         add_pdf_to_context(self, filePath: Path): Adds a PDF file to the context for retrieval.
 
     """
-    def __init__(self, model="gemma:2b"):
+    def __init__(self, model="gemma:2b", gemini_api_key: str | None = None):
         """
         Initializes the LLMRAGHandler with the specified model.
 
         Args:
             model (str): The model to use for the language model and vector store. Default is "gemma:2b".
+            gemini_api_key (str | None): The Gemini API key for generation. If not provided, it is read from GEMINI_API_KEY env var.
         """
-        self.llm = ChatOllama(model=model)
+        self.model = model
+        self.gemini_api_key = gemini_api_key or os.environ.get("GEMINI_API_KEY", DEFAULT_GEMINI_API_KEY)
+        self.gemini_endpoint = os.environ.get("GEMINI_ENDPOINT", DEFAULT_GEMINI_ENDPOINT)
         self.vector_store = VectorStore(llm_model=model)
         
         # System prompt - These are the instructions for the model
-        self.system_prompt = "You are an assistant for question-answering tasks." \
-        " Use the following pieces of retrieved context to answer the question. " \
-        "If you don't know the answer, try to answer the question without context but mention that " \
-        "the context does not provide enough information." \
-        " Use three sentences maximum and keep the answer concise."
+        self.system_prompt = (
+            "You are an assistant for question-answering tasks. "
+            "Use the following retrieved context to answer the question. "
+            "If you cite text, mention which document, page, and line range you used. "
+            "If the context does not provide enough information, say so clearly. "
+            "Keep the answer concise."
+        )
         
-        # keep track of the conversation history
-        self.history = []
-        self.history.append(SystemMessage(content=self.system_prompt))
+        self.history: List[BaseMessage] = [SystemMessage(content=self.system_prompt)]
 
-        # prompt template for q&a with rag
-        self.rag_prompt = PromptTemplate.from_template(
-        "Previous conversation: {chat_history}"
-        " Question: {input}" \
-        " Context: {context}" \
-        " Answer:")
+    def _format_documents(self, docs: List[Document]) -> str:
+        if not docs:
+            return ""
 
-        # Chain for querying the LLM and getting the answer
-        self.llm_chain = self.rag_prompt | self.llm | StrOutputParser()
+        formatted = []
+        for idx, doc in enumerate(docs, start=1):
+            ref = doc.metadata.get("source_ref") or doc.metadata.get("source") or "unknown source"
+            text = (doc.page_content or "").strip()
+            if len(text) > 1200:
+                text = text[:1200].rstrip() + "..."
+            formatted.append(f"Source {idx}: {ref}\n{text}")
+        return "\n\n".join(formatted)
 
-        # Create retrieval chain for RAG 
-        self.rag_chain = create_retrieval_chain(self.vector_store.as_retriever(), self.llm_chain)
+    def _build_prompt(self, question: str, docs: List[Document]) -> str:
+        context_text = self._format_documents(docs)
+        if context_text:
+            return (
+                f"{self.system_prompt}\n\n"
+                f"Context:\n{context_text}\n\n"
+                f"Question: {question}\n"
+                "Answer the question using only the provided context. "
+                "If the answer cannot be found in the context, say that it is not available."
+            )
+        return f"{self.system_prompt}\n\nQuestion: {question}\nAnswer:"
 
-    
-    def generate_response(self, human_message) -> AIMessage:
+    def _build_source_listing(self, docs: List[Document]) -> str:
+        source_refs = []
+        for doc in docs:
+            ref = doc.metadata.get("source_ref") or doc.metadata.get("source")
+            snippet = doc.page_content.strip().replace("\n", " ")
+            snippet = snippet[:240].rstrip()
+            if ref and ref not in source_refs:
+                source_refs.append(ref)
+        if not source_refs:
+            return ""
+        output = [f"{idx + 1}. {ref}" for idx, ref in enumerate(source_refs)]
+        return "\n".join(output)
+
+    def _extract_gemini_text(self, response_json: dict) -> str:
+        candidates = response_json.get("candidates") or []
+        if candidates:
+            first = candidates[0]
+            content = first.get("content") or {}
+            parts = content.get("parts") or []
+            if isinstance(parts, list) and parts:
+                texts = [part.get("text", "") for part in parts if isinstance(part, dict)]
+                return "\n".join(texts).strip()
+        return response_json.get("text", "") or ""
+
+    def _call_gemini(self, prompt: str) -> str:
+        if not self.gemini_api_key:
+            raise RuntimeError(
+                "Gemini API key is not configured. Set GEMINI_API_KEY environment variable or pass gemini_api_key to LLMRAGHandler."
+            )
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-goog-api-key": self.gemini_api_key,
+        }
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt},
+                    ],
+                }
+            ],
+        }
+
+        timeout = int(os.environ.get("GEMINI_TIMEOUT", "60"))
+        retry_strategy = Retry(
+            total=3,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["POST"],
+            backoff_factor=1,
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session = requests.Session()
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        try:
+            response = session.post(
+                self.gemini_endpoint,
+                headers=headers,
+                json=payload,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+        except requests.exceptions.Timeout as exc:
+            raise RuntimeError(
+                f"Gemini API request timed out after {timeout} seconds. "
+                f"Увеличьте GEMINI_TIMEOUT или проверьте интернет-соединение. "
+                f"Ошибка: {exc}"
+            ) from exc
+        except requests.exceptions.RequestException as exc:
+            raise RuntimeError(
+                f"Ошибка при запросе в Gemini API: {exc}"
+            ) from exc
+
+        return self._extract_gemini_text(response.json())
+
+    def generate_response(self, human_message) -> str:
         """
-        Generates and appends a response from the LLM.
+        Generates and appends a response from the Gemini API.
 
         Args:
             human_message (str): The user's message.
 
         Returns:
-            AIMessage: The AI's response.
+            str: The AI's response with citations appended.
         """
-        print(f"Adding Humang Message...")
-        print(f"{human_message}")
-
-        print("Generating response from LLM...")
+        print("Generating response from Gemini API...")
         context_docs = self.retrieve(human_message)
-        # Run the retrieval chain
-        response = self.rag_chain.invoke({
-            "input": human_message,
-            "context": context_docs,
-            "chat_history": self.history}
-        )
-        print(response)
+        prompt = self._build_prompt(human_message, context_docs)
+        answer = self._call_gemini(prompt)
 
-        self.history.append(HumanMessage(content=human_message))                
-        self.history.append(AIMessage(content=response["answer"]))
-        return response["answer"]
+        citation_text = self._build_source_listing(context_docs)
+        if citation_text:
+            answer = f"{answer}\n\nИсточники:\n{citation_text}"
+
+        self.history.append(HumanMessage(content=human_message))
+        self.history.append(AIMessage(content=answer))
+        return answer
 
     def reset(self) -> None:
         """
@@ -135,4 +226,4 @@ class LLMRAGHandler:
         self.vector_store.add_document(filePath)
     
 if __name__ == '__main__':
-    print(ChatOllama.list_models())
+    print("Run this module through chat_ui.py or import LLMRAGHandler.")

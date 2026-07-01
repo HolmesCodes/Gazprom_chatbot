@@ -1,7 +1,10 @@
 import logging
-
+import shutil
+import uuid
 from pathlib import Path
 from typing import List
+
+import numpy as np
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
@@ -78,27 +81,18 @@ class VectorStore:
         Parameters:
         vector_store_path (str): The path to the directory where the vector store will be saved.
         llm_model (str): The name of the language model to use for generating embeddings.
-        chunk_size (int): The number of documents to process at a time.
-        chunk_overlap (int): The number of documents to overlap between chunks.
+        chunk_size (int): The number of characters per document chunk.
+        chunk_overlap (int): The number of overlapping characters between chunks.
         persist (bool): Whether to persist the vector store to disk.
-        index_path (str): The path to the Faiss index file.
-
-        Attributes:
-        vector_store_path (str): The path to the directory where the vector store will be saved.
-        llm_model (str): The name of the language model to use for generating embeddings.
-        embeddings_model (OllamaEmbeddings): The embeddings model initialized with the specified language model.
-        chunk_size (int): The number of documents to process at a time.
-        chunk_overlap (int): The number of documents to overlap between chunks.
-        persist (bool): Whether to persist the vector store to disk.
-        index_path (str): The path to the Faiss index file.
+        index_path (str): The directory path to save the Faiss index.
         """
-        self.vector_store_path = vector_store_path
+        self.vector_store_path = Path(vector_store_path)
         self.llm_model = llm_model
         self.embeddings_model = OllamaEmbeddings(model="nomic-embed-text")
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.persist = persist
-        self.index_path = index_path
+        self.index_path = Path(index_path)
 
         self._setup_vector_store()
 
@@ -106,40 +100,30 @@ class VectorStore:
         """
         Sets up the vector store for the model.
 
-        This method checks if a vector store already exists at the specified path.
-        If it does, it loads the existing vector store using the provided embeddings model.
-        If not, it creates a new vector store using the provided embeddings model and
-        persists it to the specified path if the 'persist' attribute is set to True.
-
-        Args:
-            self: An instance of the class containing the following attributes:
-                - vector_store_path (Path): The path where the vector store is stored.
-                - embeddings_model (EmbeddingsModel): The model used for generating embeddings.
-                - persist (bool): Whether to persist the vector store to disk.
-
-        Returns:
-            None
+        This method loads an existing vector store from disk if it exists.
+        If no persisted store is available, it creates a new FAISS store with
+        the requested embeddings model.
         """
-        print(self.vector_store_path)
-        if self.vector_store_path.exists():
-            self.vector_store =  FAISS.load_local(str(self.vector_store_path), 
-                                    embeddings=self.embeddings_model,
-                                     allow_dangerous_deserialization=True)
-        else:
-            print(f"No Vectorstore found at {str(self.vector_store_path)}")
-
-            self.embedding_dim = len(self.embeddings_model.embed_query("hello world"))
-            self.index = faiss.IndexFlatL2(self.embedding_dim)
-
-            self.vector_store = FAISS(
-                embedding_function=self.embeddings_model,
-                index=self.index,
-                docstore=InMemoryDocstore(),
-                index_to_docstore_id={},
+        self.vector_store_path.mkdir(parents=True, exist_ok=True)
+        if self.vector_store_path.exists() and any(self.vector_store_path.iterdir()):
+            self.vector_store = FAISS.load_local(
+                str(self.vector_store_path),
+                embeddings=self.embeddings_model,
+                allow_dangerous_deserialization=True,
             )
+            return
 
-            if self.persist:
-                self.vector_store.save_local(self.index_path)
+        self.embedding_dim = len(self.embeddings_model.embed_query("hello world"))
+        self.index = faiss.IndexFlatL2(self.embedding_dim)
+        self.vector_store = FAISS(
+            embedding_function=self.embeddings_model,
+            index=self.index,
+            docstore=InMemoryDocstore(),
+            index_to_docstore_id={},
+        )
+
+        if self.persist:
+            self.vector_store.save_local(self.index_path)
 
     def load_documents(self, data_path) -> List[Document]:
         """
@@ -169,23 +153,105 @@ class VectorStore:
             List[Document]: The list of document chunks that were added to the vector store.
         """
         splitted_docs = self.chunk_documents(documents=documents)
-        self.vector_store.add_documents(splitted_docs)
-        self.vector_store.save_local(self.index_path)
+        if not splitted_docs:
+            return []
+
+        texts = [doc.page_content for doc in splitted_docs]
+        metadatas = [doc.metadata for doc in splitted_docs]
+        ids = [doc.id or str(uuid.uuid4()) for doc in splitted_docs]
+
+        embeddings = self.embeddings_model.embed_documents(texts)
+        if embeddings is None:
+            raise RuntimeError("Failed to compute embeddings for document chunks.")
+
+        if isinstance(embeddings, list) and embeddings and not isinstance(
+            embeddings[0], (list, tuple, np.ndarray)
+        ):
+            embeddings = [embeddings]
+
+        vector = np.array(embeddings, dtype=np.float32)
+        if vector.ndim == 1:
+            vector = vector.reshape(1, -1)
+
+        if getattr(self.vector_store, "_normalize_L2", False):
+            faiss.normalize_L2(vector)
+
+        self.vector_store.index.add(vector)
+        self.vector_store.docstore.add(
+            {
+                id_: Document(id=id_, page_content=text, metadata=meta)
+                for id_, text, meta in zip(ids, texts, metadatas)
+            }
+        )
+
+        starting_len = len(self.vector_store.index_to_docstore_id)
+        index_to_id = {starting_len + j: id_ for j, id_ in enumerate(ids)}
+        self.vector_store.index_to_docstore_id.update(index_to_id)
+
+        if self.persist:
+            self.vector_store.save_local(self.index_path)
+
         return splitted_docs
 
-    def chunk_documents(self, documents: List[Document]) -> List[Document]:
+    def rebuild_index(self, data_path: str = "uploaded_pdfs") -> List[Document]:
         """
-        Splits a list of Document objects into smaller chunks using a recursive character text splitter.
+        Rebuilds the vector store from scratch using all documents in the given directory.
 
         Args:
-            documents (List[Document]): A list of Document objects to be chunked.
+            data_path (str): The path to the directory containing PDF files.
 
         Returns:
-            List[Document]: A list of chunked Document objects.
+            List[Document]: A list of document chunks that were added to the rebuilt vector store.
         """
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=self.chunk_size, 
-                                              chunk_overlap=self.chunk_overlap)    
-        return text_splitter.split_documents(documents)
+        if self.vector_store_path.exists():
+            shutil.rmtree(self.vector_store_path)
+        self._setup_vector_store()
+        documents = self.load_documents(data_path)
+        return self.add_documents(documents)
+
+    def chunk_documents(self, documents: List[Document]) -> List[Document]:
+        chunks: List[Document] = []
+        for doc in documents:
+            text = doc.page_content or ""
+            if not text.strip():
+                continue
+            raw_source = doc.metadata.get("source", "unknown")
+            source = Path(raw_source).name if raw_source else "unknown"
+            page = doc.metadata.get("page", None)
+            start = 0
+            chunk_index = 0
+            while start < len(text):
+                end = min(start + self.chunk_size, len(text))
+                if end < len(text):
+                    newline_pos = text.rfind("\n", start, end)
+                    if newline_pos > start + self.chunk_size // 2:
+                        end = newline_pos
+
+                chunk_text = text[start:end].strip()
+                if not chunk_text:
+                    start += self.chunk_size - self.chunk_overlap
+                    continue
+
+                line_start = text.count("\n", 0, start) + 1
+                line_end = text.count("\n", 0, end) + 1
+                metadata = dict(doc.metadata)
+                metadata.update(
+                    source=source,
+                    page=page,
+                    chunk_id=chunk_index + 1,
+                    line_start=line_start,
+                    line_end=line_end,
+                    source_ref=(
+                        f"{source}, page {page}, lines {line_start}-{line_end}"
+                        if page is not None
+                        else f"{source}, lines {line_start}-{line_end}"
+                    ),
+                )
+                chunks.append(Document(page_content=chunk_text, metadata=metadata))
+                chunk_index += 1
+                start += self.chunk_size - self.chunk_overlap
+
+        return chunks
     
     
     def load_document(self, pdf_path: Path) -> List[Document]:
