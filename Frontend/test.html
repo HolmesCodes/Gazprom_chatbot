@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Вход</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+       
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            
+          
+            background: url('Best.jpg') no-repeat center center fixed;
+            background-size: cover;
+      
+        }
+  
+    
+        .login-card {
+            top: 100px;   
+            left: -400px;  
+            position: relative;
+            z-index: 1;
+            background: #fff;
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            border-radius: 40px;
+            padding: 3rem 2.5rem;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+            text-align: center;
+            transition: 0.3s ease;
+        }
+
+        .login-card:hover {
+            border-color: rgba(255, 255, 255, 0.20);
+            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.8);
+        }
+
+        .login-card h1 {
+            color: #fff;
+            font-weight: 300;
+            font-size: 1.8rem;
+            letter-spacing: 2px;
+            margin-bottom: 0.3rem;
+        }
+        .login-card .subtitle {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+            letter-spacing: 1px;
+        }
+
+        .input-group {
+            display: none;
+            flex-direction: column;
+            gap: 1rem;
+            margin: 1.8rem 0 1.5rem;
+            animation: fadeSlide 0.4s ease forwards;
+        }
+
+        .input-group.active {
+            display: flex;
+        }
+
+        @keyframes fadeSlide {
+            0% { opacity: 0; transform: translateY(-10px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 14px 20px;
+            border: 2px solid #13518c; 
+            border-radius: 60px;
+            background: rgba(255, 255, 255, 0.07);
+            color: #13518c;
+            font-size: 1rem;
+            outline: none;
+            transition: 0.3s ease;
+        }
+
+        .input-group input::placeholder {
+            color: rgba(255, 255, 255, 0.30);
+            font-weight: 300;
+        }
+
+        .input-group input:focus {
+            border-color: #13518c;
+            background: rgba(255, 255, 255, 0.10);
+            box-shadow: 0 0 0 4px rgba(108, 92, 231, 0.15);
+        }
+
+        .btn-login {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            background: linear-gradient(135deg, #13518c, #4584bf);
+            color: #fff;
+            border: none;
+            padding: 16px 40px;
+            border-radius: 60px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            width: 100%;
+            transition: 0.3s;
+            box-shadow: 0 8px 24px rgba(108, 92, 231, 0.35);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-login i {
+            font-size: 1.1rem;
+            transition: 0.3s;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-3px) scale(1.01);
+            box-shadow: 0 14px 36px rgba(108, 92, 231, 0.5);
+        }
+
+        .btn-login:active {
+            transform: scale(0.97);
+        }
+
+        .btn-login::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+        .btn-login:active::after {
+            width: 400px;
+            height: 400px;
+        }
+
+        .btn-cancel {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: rgba(255, 255, 255, 0.5);
+            padding: 10px 20px;
+            border-radius: 60px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            margin-top: 0.8rem;
+            transition: 0.25s;
+            width: fit-content;
+            margin-left: auto;
+            margin-right: auto;
+            display: none;
+        }
+
+        .btn-cancel:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-cancel.visible {
+            display: inline-block;
+        }
+
+        .message {
+            color: #ff6b6b;
+            font-size: 0.85rem;
+            margin-top: 0.8rem;
+            min-height: 1.4em;
+        }
+        .message.success {
+            color: #51cf66;
+        }
+
+        @media (max-width: 480px) {
+            .login-card {
+                padding: 2rem 1.5rem;
+                border-radius: 28px;
+                margin: 0 1rem;
+            }
+            .login-card h1 {
+                font-size: 1.5rem;
+            }
+            .btn-login {
+                padding: 14px 24px;
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Всё остальное без изменений -->
+    <div class="login-card">
+        <h1 style="color:#13518c"> Добро пожаловать</h1>
+        <p class="subtitle" style="color:#13518c">Войдите в свою учётную запись</p>
+
+        <div class="input-group" id="inputGroup">
+            <input type="text" id="loginInput" placeholder="Логин" autocomplete="username" />
+            <input type="password" id="passwordInput" placeholder="Пароль" autocomplete="current-password" />
+        </div>
+
+        <button class="btn-login" id="mainLoginBtn">
+            <i class="fas fa-sign-in-alt"></i> Войти
+        </button>
+
+        <button class="btn-cancel" id="cancelBtn">
+            <i class="fas fa-times"></i> Отмена
+        </button>
+
+        <div class="message" id="message"></div>
+    </div>
+
+    <script>
+        // Скрипт остаётся тем же
+        (function() {
+            const mainBtn = document.getElementById('mainLoginBtn');
+            const cancelBtn = document.getElementById('cancelBtn');
+            const inputGroup = document.getElementById('inputGroup');
+            const loginInput = document.getElementById('loginInput');
+            const passInput = document.getElementById('passwordInput');
+            const messageEl = document.getElementById('message');
+
+            let isInputVisible = false;
+
+            function showInputs() {
+                inputGroup.classList.add('active');
+                cancelBtn.classList.add('visible');
+                mainBtn.innerHTML = '<i class="fas fa-check"></i> Подтвердить';
+                isInputVisible = true;
+                messageEl.textContent = '';
+                messageEl.className = 'message';
+                setTimeout(() => loginInput.focus(), 100);
+            }
+
+            function hideInputs() {
+                inputGroup.classList.remove('active');
+                cancelBtn.classList.remove('visible');
+                mainBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Войти';
+                isInputVisible = false;
+                loginInput.value = '';
+                passInput.value = '';
+                messageEl.textContent = '';
+                messageEl.className = 'message';
+            }
+
+            function validateCredentials(login, password) {
+                return (login === 'admin' && password === '12345');
+            }
+
+            mainBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+
+                if (!isInputVisible) {
+                    showInputs();
+                } else {
+                    const login = loginInput.value.trim();
+                    const password = passInput.value.trim();
+
+                    if (!login || !password) {
+                        messageEl.textContent = 'Заполните оба поля';
+                        messageEl.className = 'message';
+                        return;
+                    }
+
+                    if (validateCredentials(login, password)) {
+                        messageEl.textContent = 'Успешный вход! Добро пожаловать.';
+                        messageEl.className = 'message success';
+                    } else {
+                        messageEl.textContent = 'Неверный логин или пароль';
+                        messageEl.className = 'message';
+                        passInput.value = '';
+                        passInput.focus();
+                    }
+                }
+            });
+
+            cancelBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                hideInputs();
+            });
+
+            passInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    mainBtn.click();
+                }
+            });
+
+            loginInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    passInput.focus();
+                }
+            });
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && isInputVisible) {
+                    hideInputs();
+                }
+            });
+        })();
+    </script>
+</body>
+</html>
+
+
