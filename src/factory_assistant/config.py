@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     )
 
     ollama_base_url: str = "http://localhost:11434"
-    llm_model: str = "granite3.3:latest"
+    llm_model: str = "deepseek/deepseek-v4-flash"
     embedding_model: str = "nomic-embed-text:latest"
 
     llm_provider: str = "ollama"
