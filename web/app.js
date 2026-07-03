@@ -112,13 +112,16 @@ function fillConfigForm(config) {
   document.getElementById("cfg-threshold").value = config.relevance_threshold;
   document.getElementById("llm-provider").value = config.llm_provider || "ollama";
   document.getElementById("llm-api-base").value = config.llm_api_base_url || "";
-  document.getElementById("whisper-model").value = config.whisper_model || "karanchopda333/whisper";
+  document.getElementById("whisper-model").value = config.whisper_model || "tiny";
+  document.getElementById("llm-model-input").value = config.llm_model || "";
   toggleProviderConfig(config.llm_provider);
 }
 
 function toggleProviderConfig(provider) {
-  const cfg = document.getElementById("openai-config");
-  cfg.style.display = provider === "openai" ? "block" : "none";
+  const isOpenAI = provider === "openai";
+  document.getElementById("openai-config").style.display = isOpenAI ? "block" : "none";
+  document.getElementById("llm-model-group").style.display = isOpenAI ? "none" : "block";
+  document.getElementById("llm-model-custom").style.display = isOpenAI ? "block" : "none";
 }
 
 function fillModelSelects(models, current) {
@@ -329,13 +332,18 @@ document.getElementById("apply-whisper").addEventListener("click", async () => {
   }
 });
 
-// Ollama models
+// Models
 document.getElementById("apply-models").addEventListener("click", async () => {
+  const provider = document.getElementById("llm-provider").value;
+  const llmModel = provider === "openai"
+    ? document.getElementById("llm-model-input").value
+    : document.getElementById("llm-model").value;
+  if (!llmModel) { alert("Укажите модель LLM"); return; }
   try {
     const config = await api("/api/admin/config", {
       method: "PATCH",
       body: JSON.stringify({
-        llm_model: document.getElementById("llm-model").value,
+        llm_model: llmModel,
         embedding_model: document.getElementById("embed-model").value,
       }),
     });

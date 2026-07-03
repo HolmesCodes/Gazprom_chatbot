@@ -78,10 +78,17 @@
 
       <div class="grid-2">
         <div class="card">
-          <h2>Модели Ollama</h2>
-          <label>LLM (ответы)
-            <select id="llm-model"></select>
-          </label>
+          <h2>Модели</h2>
+          <div id="llm-model-group">
+            <label>LLM (ответы)
+              <select id="llm-model"></select>
+            </label>
+          </div>
+          <div id="llm-model-custom" class="provider-config">
+            <label>LLM (ответы)
+              <input id="llm-model-input" type="text" placeholder="deepseek-v4-flash-free">
+            </label>
+          </div>
           <label>Embeddings (индексация)
             <select id="embed-model"></select>
           </label>
