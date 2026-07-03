@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Factory Assistant — тестовый UI</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>ИИ-помощник на заводе</h1>
+      <p class="muted">Простой интерфейс для проверки RAG</p>
+    </div>
+    <nav class="tabs">
+      <button class="tab active" data-tab="user">Пользователь</button>
+      <button class="tab" data-tab="admin">Админ</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="panel-user" class="panel active">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head">
+            <h2>Чат по документам</h2>
+            <span id="user-model-badge" class="badge">модель: …</span>
+          </div>
+          <div id="chat-log" class="chat-log"></div>
+          <form id="ask-form" class="row">
+            <input id="ask-input" type="text" placeholder="Например: как запустить линию после переналадки?" autocomplete="off">
+            <button type="submit">Спросить</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Адаптация новичка</h2>
+            <button id="onboarding-start" type="button">Старт</button>
+          </div>
+          <div id="onboarding-log" class="chat-log small"></div>
+          <form id="onboarding-form" class="row">
+            <input id="onboarding-input" type="text" placeholder="далее / назад / статус / вопрос" autocomplete="off">
+            <button type="submit">Отправить</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Источники последнего ответа</h2>
+        <div id="sources-panel" class="sources-panel muted">Пока нет ответа</div>
+      </div>
+    </section>
+
+    <section id="panel-admin" class="panel">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Модели Ollama</h2>
+          <label>LLM (ответы)
+            <select id="llm-model"></select>
+          </label>
+          <label>Embeddings (индексация)
+            <select id="embed-model"></select>
+          </label>
+          <button id="apply-models" type="button">Применить модели</button>
+          <p id="models-status" class="muted small"></p>
+        </div>
+
+        <div class="card">
+          <h2>Параметры RAG</h2>
+          <div class="form-grid">
+            <label>top_k <input id="cfg-top-k" type="number" min="1" max="20"></label>
+            <label>fetch_k <input id="cfg-fetch-k" type="number" min="1" max="100"></label>
+            <label>chunk_size <input id="cfg-chunk-size" type="number" min="100" max="4000"></label>
+            <label>chunk_overlap <input id="cfg-chunk-overlap" type="number" min="0" max="1000"></label>
+            <label>relevance_threshold <input id="cfg-threshold" type="number" min="0" max="1" step="0.01"></label>
+          </div>
+          <button id="apply-rag" type="button">Сохранить параметры</button>
+          <p class="muted small">После смены chunk_size/overlap или embedding-модели нужна переиндексация.</p>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head">
+            <h2>Индексация</h2>
+            <button id="reindex-btn" type="button">Переиндексировать</button>
+          </div>
+          <div id="index-stats" class="stats"></div>
+        </div>
+
+        <div class="card">
+          <h2>Загрузка документов</h2>
+          <form id="upload-form" class="row">
+            <input id="upload-input" type="file" accept=".pdf,.docx,.txt,.md">
+            <label class="checkbox"><input id="auto-reindex" type="checkbox" checked> auto-reindex</label>
+            <button type="submit">Загрузить</button>
+          </form>
+          <p id="upload-status" class="muted small"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Документы в базе</h2>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Файл</th>
+              <th>Размер</th>
+              <th>Чанков (план)</th>
+              <th>Чанков (в индексе)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="docs-table"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

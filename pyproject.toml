@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "factory-assistant"
+version = "0.1.0"
+description = "RAG-помощник специалиста на заводе (ГПН Школа А5)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "langchain>=0.3.0",
+    "langchain-ollama>=0.2.0",
+    "langchain-chroma>=0.2.0",
+    "langchain-community>=0.3.0",
+    "langchain-text-splitters>=0.3.0",
+    "chromadb>=0.5.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.9",
+    "pydantic-settings>=2.6.0",
+    "pypdf>=5.0.0",
+    "python-docx>=1.1.0",
+    "docx2txt>=0.8",
+]
+
+[project.scripts]
+factory-ingest = "factory_assistant.cli:ingest_main"
+factory-serve = "factory_assistant.cli:serve_main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
