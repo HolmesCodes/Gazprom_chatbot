@@ -1,6 +1,8 @@
 const state = {
-  onboardingSessionId: null,
   config: null,
+  mediaRecorder: null,
+  audioChunks: [],
+  isRecording: false,
 };
 
 async function api(path, options = {}) {
@@ -30,7 +32,11 @@ function setTab(name) {
 function appendMessage(containerId, role, text) {
   const el = document.createElement("div");
   el.className = `msg ${role}`;
-  el.textContent = text;
+  if (role === "bot" && typeof marked !== "undefined") {
+    el.innerHTML = marked.parse(text);
+  } else {
+    el.textContent = text;
+  }
   const container = document.getElementById(containerId);
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
@@ -51,6 +57,14 @@ function renderSources(sources) {
     const title = document.createElement("div");
     title.className = "source-title";
     title.textContent = `${src.source_file}${src.page_number ? ` · стр. ${src.page_number}` : ""}${src.chunk_id != null ? ` · chunk #${src.chunk_id}` : ""}`;
+    if (src.source_file.match(/\.pdf$/i)) {
+      const btn = document.createElement("button");
+      btn.className = "pdf-btn";
+      const pageParam = src.page_number ? `#page=${src.page_number}` : "";
+      btn.textContent = "📄 Открыть PDF";
+      btn.addEventListener("click", () => openPdfPreview(src.source_file, src.page_number));
+      title.appendChild(btn);
+    }
     const excerpt = document.createElement("div");
     excerpt.className = "muted small";
     excerpt.textContent = src.excerpt || "";
@@ -58,6 +72,22 @@ function renderSources(sources) {
     block.appendChild(excerpt);
     panel.appendChild(block);
   });
+}
+
+let currentPdfFile = null;
+let currentPdfPage = null;
+
+function openPdfPreview(filename, pageNumber) {
+  currentPdfFile = filename;
+  currentPdfPage = pageNumber;
+  document.getElementById("modal-title").textContent = `PDF: ${filename}${pageNumber ? ` — стр. ${pageNumber}` : ""}`;
+  const body = document.getElementById("modal-body");
+  body.innerHTML = "";
+  const iframe = document.createElement("iframe");
+  iframe.src = `/api/media/documents/${encodeURIComponent(filename)}${pageNumber ? `#page=${pageNumber}` : ""}`;
+  iframe.className = "pdf-frame";
+  body.appendChild(iframe);
+  document.getElementById("pdf-modal").classList.remove("hidden");
 }
 
 function fillConfigForm(config) {
@@ -68,6 +98,8 @@ function fillConfigForm(config) {
   document.getElementById("cfg-chunk-size").value = config.chunk_size;
   document.getElementById("cfg-chunk-overlap").value = config.chunk_overlap;
   document.getElementById("cfg-threshold").value = config.relevance_threshold;
+  document.getElementById("llm-provider").value = config.llm_provider || "ollama";
+  document.getElementById("llm-api-base").value = config.llm_api_base_url || "";
 }
 
 function fillModelSelects(models, current) {
@@ -106,12 +138,17 @@ function renderIndexStats(status) {
   tbody.innerHTML = "";
   status.files.forEach((file) => {
     const tr = document.createElement("tr");
+    const ext = file.name.split(".").pop().toLowerCase();
+    const isImage = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
     tr.innerHTML = `
       <td>${file.name}</td>
       <td>${file.size_kb} KB</td>
       <td>${file.planned_chunks}</td>
       <td>${file.indexed_chunks}</td>
-      <td><button type="button" data-delete="${file.name}">удалить</button></td>
+      <td>
+        ${isImage ? `<a href="/api/media/documents/${encodeURIComponent(file.name)}" target="_blank">👁️</a>` : ""}
+        <button type="button" data-delete="${file.name}">удалить</button>
+      </td>
     `;
     tbody.appendChild(tr);
   });
@@ -152,10 +189,58 @@ async function loadAdmin() {
   }
 }
 
+// Microphone
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    state.audioChunks = [];
+    state.mediaRecorder = new MediaRecorder(stream);
+    state.mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) state.audioChunks.push(e.data);
+    };
+    state.mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(state.audioChunks, { type: "audio/webm" });
+      await sendAudio(blob);
+    };
+    state.mediaRecorder.start();
+    state.isRecording = true;
+    document.getElementById("mic-btn").textContent = "⏹";
+    document.getElementById("mic-btn").classList.add("recording");
+  } catch (err) {
+    alert("Микрофон не доступен: " + err.message);
+  }
+}
+
+function stopRecording() {
+  if (state.mediaRecorder && state.isRecording) {
+    state.mediaRecorder.stop();
+    state.isRecording = false;
+    document.getElementById("mic-btn").textContent = "🎤";
+    document.getElementById("mic-btn").classList.remove("recording");
+  }
+}
+
+async function sendAudio(blob) {
+  const formData = new FormData();
+  formData.append("file", blob, "audio.webm");
+  try {
+    const response = await fetch("/api/stt", { method: "POST", body: formData });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "STT error");
+    document.getElementById("ask-input").value = data.text;
+    document.getElementById("ask-form").dispatchEvent(new Event("submit"));
+  } catch (err) {
+    appendMessage("chat-log", "system", `Ошибка распознавания: ${err.message}`);
+  }
+}
+
+// Tab switching
 document.querySelectorAll(".tab").forEach((btn) => {
   btn.addEventListener("click", () => setTab(btn.dataset.tab));
 });
 
+// Ask question
 document.getElementById("ask-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const input = document.getElementById("ask-input");
@@ -180,44 +265,16 @@ document.getElementById("ask-form").addEventListener("submit", async (event) => 
   }
 });
 
-document.getElementById("onboarding-start").addEventListener("click", async () => {
-  try {
-    const result = await api("/api/onboarding/start", {
-      method: "POST",
-      body: JSON.stringify({ session_id: state.onboardingSessionId }),
-    });
-    state.onboardingSessionId = result.session_id;
-    document.getElementById("onboarding-log").innerHTML = "";
-    appendMessage("onboarding-log", "bot", result.reply);
-  } catch (err) {
-    appendMessage("onboarding-log", "system", `Ошибка: ${err.message}`);
+// Microphone button
+document.getElementById("mic-btn").addEventListener("click", () => {
+  if (state.isRecording) {
+    stopRecording();
+  } else {
+    startRecording();
   }
 });
 
-document.getElementById("onboarding-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!state.onboardingSessionId) {
-    appendMessage("onboarding-log", "system", "Сначала нажмите «Старт»");
-    return;
-  }
-  const input = document.getElementById("onboarding-input");
-  const message = input.value.trim();
-  if (!message) return;
-
-  appendMessage("onboarding-log", "user", message);
-  input.value = "";
-
-  try {
-    const result = await api("/api/onboarding/message", {
-      method: "POST",
-      body: JSON.stringify({ session_id: state.onboardingSessionId, message }),
-    });
-    appendMessage("onboarding-log", "bot", result.reply);
-  } catch (err) {
-    appendMessage("onboarding-log", "system", `Ошибка: ${err.message}`);
-  }
-});
-
+// Ollama models
 document.getElementById("apply-models").addEventListener("click", async () => {
   try {
     const config = await api("/api/admin/config", {
@@ -234,6 +291,25 @@ document.getElementById("apply-models").addEventListener("click", async () => {
   }
 });
 
+// LLM Provider
+document.getElementById("apply-provider").addEventListener("click", async () => {
+  try {
+    const config = await api("/api/admin/config", {
+      method: "PATCH",
+      body: JSON.stringify({
+        llm_provider: document.getElementById("llm-provider").value,
+        llm_api_base_url: document.getElementById("llm-api-base").value,
+        llm_api_key: document.getElementById("llm-api-key").value,
+      }),
+    });
+    fillConfigForm(config);
+    document.getElementById("provider-status").textContent = "Провайдер применён.";
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+// RAG params
 document.getElementById("apply-rag").addEventListener("click", async () => {
   try {
     const config = await api("/api/admin/config", {
@@ -253,6 +329,7 @@ document.getElementById("apply-rag").addEventListener("click", async () => {
   }
 });
 
+// Reindex
 document.getElementById("reindex-btn").addEventListener("click", async () => {
   const btn = document.getElementById("reindex-btn");
   btn.disabled = true;
@@ -271,6 +348,7 @@ document.getElementById("reindex-btn").addEventListener("click", async () => {
   }
 });
 
+// Upload
 document.getElementById("upload-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const fileInput = document.getElementById("upload-input");
@@ -294,6 +372,19 @@ document.getElementById("upload-form").addEventListener("submit", async (event) 
     await loadAdmin();
   } catch (err) {
     document.getElementById("upload-status").textContent = err.message;
+  }
+});
+
+// PDF modal
+document.getElementById("modal-close").addEventListener("click", () => {
+  document.getElementById("pdf-modal").classList.add("hidden");
+  document.getElementById("modal-body").innerHTML = "";
+});
+
+document.getElementById("pdf-modal").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) {
+    document.getElementById("pdf-modal").classList.add("hidden");
+    document.getElementById("modal-body").innerHTML = "";
   }
 });
 

@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     llm_model: str = "granite3.3:latest"
     embedding_model: str = "nomic-embed-text:latest"
 
+    llm_provider: str = "ollama"
+    llm_api_base_url: str = ""
+    llm_api_key: str = ""
+
+    whisper_model: str = "karanchopda333/whisper"
+
     documents_dir: Path = Path("data/documents")
     chroma_dir: Path = Path("chroma_db")
     collection_name: str = "factory_docs"

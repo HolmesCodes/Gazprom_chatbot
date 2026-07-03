@@ -8,6 +8,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 
 from factory_assistant.config import Settings, settings
 from factory_assistant.ingest import build_vectorstore
@@ -75,13 +76,7 @@ class RagEngine:
         self.cfg = cfg or settings
         self.vectorstore: Chroma | None = None
         self.retriever = None
-        self.llm = ChatOllama(
-            model=self.cfg.llm_model,
-            base_url=self.cfg.ollama_base_url,
-            temperature=0.1,
-            num_ctx=8192,
-            keep_alive="24h",
-        )
+        self.llm = self._create_llm()
         self.prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", RAG_SYSTEM_PROMPT),
@@ -90,6 +85,23 @@ class RagEngine:
         )
         self.chain = None
         self._try_load_vectorstore()
+
+    def _create_llm(self):
+        if self.cfg.llm_provider == "openai" and self.cfg.llm_api_base_url:
+            return ChatOpenAI(
+                model=self.cfg.llm_model,
+                base_url=self.cfg.llm_api_base_url,
+                api_key=self.cfg.llm_api_key or "sk-placeholder",
+                temperature=0.1,
+                max_tokens=2048,
+            )
+        return ChatOllama(
+            model=self.cfg.llm_model,
+            base_url=self.cfg.ollama_base_url,
+            temperature=0.1,
+            num_ctx=8192,
+            keep_alive="24h",
+        )
 
     def _try_load_vectorstore(self) -> bool:
         persist_dir = self.cfg.chroma_dir.resolve()
@@ -181,13 +193,16 @@ class RagEngine:
 
     def update_llm_model(self, model: str) -> None:
         self.cfg.llm_model = model
-        self.llm = ChatOllama(
-            model=model,
-            base_url=self.cfg.ollama_base_url,
-            temperature=0.1,
-            num_ctx=8192,
-            keep_alive="24h",
-        )
+        self.llm = self._create_llm()
+        self._rebuild_chain()
+
+    def update_provider(self, provider: str, api_base: str = "", api_key: str = "") -> None:
+        self.cfg.llm_provider = provider
+        if api_base:
+            self.cfg.llm_api_base_url = api_base
+        if api_key:
+            self.cfg.llm_api_key = api_key
+        self.llm = self._create_llm()
         self._rebuild_chain()
 
     def update_retrieval_settings(

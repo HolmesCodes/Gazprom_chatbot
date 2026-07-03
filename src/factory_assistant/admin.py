@@ -8,7 +8,7 @@ from urllib.request import urlopen
 from factory_assistant.config import Settings, settings
 from factory_assistant.ingest import build_vectorstore, load_documents, split_documents
 
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".xlsx", ".xls", ".csv", ".pptx", ".html", ".htm", ".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 
 def list_ollama_models(base_url: str | None = None) -> list[dict]:

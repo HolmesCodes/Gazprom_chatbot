@@ -4,7 +4,6 @@ from factory_assistant.admin import get_index_status, list_ollama_models, previe
 from factory_assistant.config import Settings, settings
 from factory_assistant.documents import delete_document, save_upload
 from factory_assistant.ingest import ingest_documents
-from factory_assistant.onboarding import OnboardingManager
 from factory_assistant.rag import RagEngine
 
 
@@ -12,13 +11,14 @@ class FactoryAssistantService:
     def __init__(self, cfg: Settings | None = None):
         self.cfg = cfg or settings
         self.rag = RagEngine(self.cfg)
-        self.onboarding = OnboardingManager(self.cfg)
 
     def get_config(self) -> dict:
         return {
             "ollama_base_url": self.cfg.ollama_base_url,
             "llm_model": self.cfg.llm_model,
             "embedding_model": self.cfg.embedding_model,
+            "llm_provider": self.cfg.llm_provider,
+            "llm_api_base_url": self.cfg.llm_api_base_url,
             "chunk_size": self.cfg.chunk_size,
             "chunk_overlap": self.cfg.chunk_overlap,
             "top_k": self.cfg.top_k,
@@ -29,10 +29,27 @@ class FactoryAssistantService:
         }
 
     def update_config(self, payload: dict) -> dict:
+        provider_changed = False
+        if "llm_provider" in payload and payload["llm_provider"]:
+            self.cfg.llm_provider = payload["llm_provider"]
+            provider_changed = True
+
+        if "llm_api_base_url" in payload and payload["llm_api_base_url"]:
+            self.cfg.llm_api_base_url = payload["llm_api_base_url"]
+
+        if "llm_api_key" in payload:
+            self.cfg.llm_api_key = payload["llm_api_key"]
+
         if "llm_model" in payload and payload["llm_model"]:
             self.cfg.llm_model = payload["llm_model"]
-            self.rag.update_llm_model(payload["llm_model"])
-            self.onboarding.update_llm_model(payload["llm_model"])
+            if provider_changed:
+                self.rag.update_provider(
+                    self.cfg.llm_provider,
+                    self.cfg.llm_api_base_url,
+                    self.cfg.llm_api_key,
+                )
+            else:
+                self.rag.update_llm_model(payload["llm_model"])
 
         if "embedding_model" in payload and payload["embedding_model"]:
             self.cfg.embedding_model = payload["embedding_model"]
@@ -63,20 +80,21 @@ class FactoryAssistantService:
         result["llm_model"] = self.cfg.llm_model
         return result
 
-    def start_onboarding(self, session_id: str | None = None) -> dict:
-        session = self.onboarding.start_session(session_id)
-        step = session.current_step
-        return {
-            **session.as_dict(),
-            "reply": (
-                f"Начинаем адаптацию. Шаг {step.number} из {session.total_steps}: "
-                f"{step.title}\n\n{step.body}\n\n"
-                "Команды: «далее», «назад», «статус»."
-            ),
+    def transcribe(self, audio_data: bytes) -> str:
+        import httpx
+        url = f"{self.cfg.ollama_base_url}/api/generate"
+        payload = {
+            "model": self.cfg.whisper_model,
+            "prompt": "",
+            "stream": False,
         }
-
-    def onboarding_message(self, session_id: str, message: str) -> dict:
-        return self.onboarding.handle_message(session_id, message)
+        files = {"file": ("audio.wav", audio_data, "audio/wav")}
+        try:
+            resp = httpx.post(url, data=payload, files=files, timeout=120)
+            resp.raise_for_status()
+            return resp.json().get("response", "")
+        except Exception:
+            raise RuntimeError("Ошибка распознавания речи. Убедитесь, что модель whisper установлена в Ollama.")
 
     def upload_document(self, filename: str, content: bytes, *, auto_reindex: bool = True) -> dict:
         saved = save_upload(filename, content, self.cfg.documents_dir)

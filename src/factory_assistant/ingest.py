@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import re
 from pathlib import Path
 
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import (
+    CSVLoader,
     Docx2txtLoader,
     PyMuPDFLoader,
     TextLoader,
+    UnstructuredExcelLoader,
+    UnstructuredHTMLLoader,
+    UnstructuredPowerPointLoader,
 )
 from langchain_core.documents import Document
 from langchain_ollama import OllamaEmbeddings
@@ -16,8 +21,10 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from factory_assistant.config import Settings, settings
 
-# Регулярка для удаления ссылок на изображения в тексте PDF
 IMAGE_REF_RE = re.compile(r'!\s*\[.*?\]\s*\(.*?\)|Рис\.?\s*\d+|Figure\s*\d+|\[image\]|\[рисунок\]', re.IGNORECASE)
+
+SUPPORTED_TEXT = {".pdf", ".docx", ".txt", ".md", ".xlsx", ".xls", ".csv", ".pptx", ".html"}
+SUPPORTED_IMAGES = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 
 def _clean_pdf_text(text: str) -> str:
@@ -38,7 +45,25 @@ def _loader_for(path: Path):
         return Docx2txtLoader(str(path))
     if suffix in {".txt", ".md"}:
         return TextLoader(str(path), encoding="utf-8")
+    if suffix in {".xlsx", ".xls"}:
+        return UnstructuredExcelLoader(str(path), mode="elements")
+    if suffix == ".csv":
+        return CSVLoader(str(path), encoding="utf-8")
+    if suffix == ".pptx":
+        return UnstructuredPowerPointLoader(str(path))
+    if suffix == ".html":
+        return UnstructuredHTMLLoader(str(path))
     raise ValueError(f"Неподдерживаемый формат: {path.suffix}")
+
+
+def _image_document(path: Path) -> Document:
+    meta = {
+        "source_file": path.name,
+        "source_path": str(path.resolve()),
+        "type": "image",
+        "page_number": None,
+    }
+    return Document(page_content=f"[Изображение: {path.name}]", metadata=meta)
 
 
 def _enrich_metadata(doc: Document, source_path: Path) -> Document:
@@ -61,11 +86,13 @@ def load_documents(documents_dir: Path | None = None) -> list[Document]:
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.name.startswith("."):
             continue
-        if path.suffix.lower() not in {".pdf", ".docx", ".txt", ".md"}:
-            continue
-        loader = _loader_for(path)
-        for doc in loader.load():
-            documents.append(_enrich_metadata(doc, path))
+        suffix = path.suffix.lower()
+        if suffix in SUPPORTED_TEXT:
+            loader = _loader_for(path)
+            for doc in loader.load():
+                documents.append(_enrich_metadata(doc, path))
+        elif suffix in SUPPORTED_IMAGES:
+            documents.append(_image_document(path))
     return documents
 
 
