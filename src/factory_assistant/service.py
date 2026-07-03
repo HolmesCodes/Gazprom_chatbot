@@ -19,6 +19,7 @@ class FactoryAssistantService:
             "embedding_model": self.cfg.embedding_model,
             "llm_provider": self.cfg.llm_provider,
             "llm_api_base_url": self.cfg.llm_api_base_url,
+            "whisper_model": self.cfg.whisper_model,
             "chunk_size": self.cfg.chunk_size,
             "chunk_overlap": self.cfg.chunk_overlap,
             "top_k": self.cfg.top_k,
@@ -34,11 +35,14 @@ class FactoryAssistantService:
             self.cfg.llm_provider = payload["llm_provider"]
             provider_changed = True
 
-        if "llm_api_base_url" in payload and payload["llm_api_base_url"]:
+        if "llm_api_base_url" in payload:
             self.cfg.llm_api_base_url = payload["llm_api_base_url"]
 
         if "llm_api_key" in payload:
             self.cfg.llm_api_key = payload["llm_api_key"]
+
+        if "whisper_model" in payload and payload["whisper_model"]:
+            self.cfg.whisper_model = payload["whisper_model"]
 
         if "llm_model" in payload and payload["llm_model"]:
             self.cfg.llm_model = payload["llm_model"]
@@ -81,20 +85,42 @@ class FactoryAssistantService:
         return result
 
     def transcribe(self, audio_data: bytes) -> str:
-        import httpx
-        url = f"{self.cfg.ollama_base_url}/api/generate"
-        payload = {
-            "model": self.cfg.whisper_model,
-            "prompt": "",
-            "stream": False,
-        }
-        files = {"file": ("audio.wav", audio_data, "audio/wav")}
+        if self.cfg.llm_provider == "openai" and self.cfg.llm_api_base_url:
+            return self._transcribe_openai(audio_data)
+        return self._transcribe_local(audio_data)
+
+    def _transcribe_openai(self, audio_data: bytes) -> str:
+        from openai import OpenAI
+        client = OpenAI(
+            base_url=self.cfg.llm_api_base_url,
+            api_key=self.cfg.llm_api_key or "sk-placeholder",
+        )
         try:
-            resp = httpx.post(url, data=payload, files=files, timeout=120)
-            resp.raise_for_status()
-            return resp.json().get("response", "")
-        except Exception:
-            raise RuntimeError("Ошибка распознавания речи. Убедитесь, что модель whisper установлена в Ollama.")
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=("audio.wav", audio_data, "audio/wav"),
+            )
+            return transcript.text.strip()
+        except Exception as exc:
+            raise RuntimeError(f"Ошибка распознавания через API: {exc}")
+
+    def _transcribe_local(self, audio_data: bytes) -> str:
+        import tempfile
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError:
+            raise RuntimeError("faster-whisper не установлен. pip install faster-whisper")
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(audio_data)
+            tmp_path = tmp.name
+        try:
+            model = WhisperModel(self.cfg.whisper_model, device="cpu", compute_type="int8")
+            segments, _ = model.transcribe(tmp_path, beam_size=1, language="ru")
+            text = " ".join(seg.text for seg in segments)
+            return text.strip() or ""
+        finally:
+            import os
+            os.unlink(tmp_path)
 
     def upload_document(self, filename: str, content: bytes, *, auto_reindex: bool = True) -> dict:
         saved = save_upload(filename, content, self.cfg.documents_dir)

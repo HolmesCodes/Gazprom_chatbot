@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     llm_api_base_url: str = ""
     llm_api_key: str = ""
 
-    whisper_model: str = "karanchopda333/whisper"
+    whisper_model: str = "tiny"
 
     documents_dir: Path = Path("data/documents")
     chroma_dir: Path = Path("chroma_db")

@@ -53,6 +53,7 @@ class ConfigUpdateRequest(BaseModel):
     llm_api_key: str | None = None
     llm_model: str | None = None
     embedding_model: str | None = None
+    whisper_model: str | None = None
     chunk_size: int | None = Field(default=None, ge=100, le=4000)
     chunk_overlap: int | None = Field(default=None, ge=0, le=1000)
     top_k: int | None = Field(default=None, ge=1, le=20)

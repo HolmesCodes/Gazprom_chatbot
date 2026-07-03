@@ -69,6 +69,32 @@ main { padding: 16px 20px 40px; max-width: 1200px; margin: 0 auto; }
   font-size: 12px;
 }
 
+.provider-badge {
+  background: #e6fffa;
+  color: #0f766e;
+}
+
+.provider-badge.provider-openai {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.card-head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.provider-config {
+  display: none;
+}
+
+.preview-link {
+  text-decoration: none;
+  margin-right: 6px;
+}
+
 .row { display: flex; gap: 8px; align-items: center; }
 .row input[type="text"], .row input[type="password"], .row input[type="file"], select {
   flex: 1;

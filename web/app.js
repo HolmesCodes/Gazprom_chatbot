@@ -57,13 +57,21 @@ function renderSources(sources) {
     const title = document.createElement("div");
     title.className = "source-title";
     title.textContent = `${src.source_file}${src.page_number ? ` · стр. ${src.page_number}` : ""}${src.chunk_id != null ? ` · chunk #${src.chunk_id}` : ""}`;
-    if (src.source_file.match(/\.pdf$/i)) {
+    const ext = src.source_file.split(".").pop().toLowerCase();
+    if (ext === "pdf") {
       const btn = document.createElement("button");
       btn.className = "pdf-btn";
-      const pageParam = src.page_number ? `#page=${src.page_number}` : "";
       btn.textContent = "📄 Открыть PDF";
       btn.addEventListener("click", () => openPdfPreview(src.source_file, src.page_number));
       title.appendChild(btn);
+    }
+    if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
+      const link = document.createElement("a");
+      link.href = `/api/media/documents/${encodeURIComponent(src.source_file)}`;
+      link.target = "_blank";
+      link.textContent = "🖼️ Открыть";
+      link.className = "pdf-btn";
+      title.appendChild(link);
     }
     const excerpt = document.createElement("div");
     excerpt.className = "muted small";
@@ -74,13 +82,9 @@ function renderSources(sources) {
   });
 }
 
-let currentPdfFile = null;
-let currentPdfPage = null;
-
 function openPdfPreview(filename, pageNumber) {
-  currentPdfFile = filename;
-  currentPdfPage = pageNumber;
-  document.getElementById("modal-title").textContent = `PDF: ${filename}${pageNumber ? ` — стр. ${pageNumber}` : ""}`;
+  const title = `PDF: ${filename}${pageNumber ? ` — стр. ${pageNumber}` : ""}`;
+  document.getElementById("modal-title").textContent = title;
   const body = document.getElementById("modal-body");
   body.innerHTML = "";
   const iframe = document.createElement("iframe");
@@ -93,6 +97,14 @@ function openPdfPreview(filename, pageNumber) {
 function fillConfigForm(config) {
   state.config = config;
   document.getElementById("user-model-badge").textContent = `модель: ${config.llm_model}`;
+  const providerBadge = document.getElementById("user-provider-badge");
+  if (config.llm_provider === "openai") {
+    providerBadge.textContent = "Polza.ai / OpenAI";
+    providerBadge.classList.add("provider-openai");
+  } else {
+    providerBadge.textContent = "Ollama (локально)";
+    providerBadge.classList.remove("provider-openai");
+  }
   document.getElementById("cfg-top-k").value = config.top_k;
   document.getElementById("cfg-fetch-k").value = config.fetch_k;
   document.getElementById("cfg-chunk-size").value = config.chunk_size;
@@ -100,6 +112,13 @@ function fillConfigForm(config) {
   document.getElementById("cfg-threshold").value = config.relevance_threshold;
   document.getElementById("llm-provider").value = config.llm_provider || "ollama";
   document.getElementById("llm-api-base").value = config.llm_api_base_url || "";
+  document.getElementById("whisper-model").value = config.whisper_model || "karanchopda333/whisper";
+  toggleProviderConfig(config.llm_provider);
+}
+
+function toggleProviderConfig(provider) {
+  const cfg = document.getElementById("openai-config");
+  cfg.style.display = provider === "openai" ? "block" : "none";
 }
 
 function fillModelSelects(models, current) {
@@ -109,17 +128,15 @@ function fillModelSelects(models, current) {
   embedSelect.innerHTML = "";
 
   models.forEach((model) => {
-    const llmOption = document.createElement("option");
-    llmOption.value = model.name;
-    llmOption.textContent = `${model.name}${model.size_gb ? ` (${model.size_gb} GB)` : ""}`;
-    if (model.name === current.llm_model) llmOption.selected = true;
-    llmSelect.appendChild(llmOption);
-
-    const embedOption = document.createElement("option");
-    embedOption.value = model.name;
-    embedOption.textContent = `${model.name}${model.size_gb ? ` (${model.size_gb} GB)` : ""}`;
-    if (model.name === current.embedding_model) embedOption.selected = true;
-    embedSelect.appendChild(embedOption);
+    const addOpt = (sel, selectedName) => {
+      const opt = document.createElement("option");
+      opt.value = model.name;
+      opt.textContent = `${model.name}${model.size_gb ? ` (${model.size_gb} GB)` : ""}`;
+      if (model.name === selectedName) opt.selected = true;
+      sel.appendChild(opt);
+    };
+    addOpt(llmSelect, current.llm_model);
+    addOpt(embedSelect, current.embedding_model);
   });
 }
 
@@ -146,7 +163,7 @@ function renderIndexStats(status) {
       <td>${file.planned_chunks}</td>
       <td>${file.indexed_chunks}</td>
       <td>
-        ${isImage ? `<a href="/api/media/documents/${encodeURIComponent(file.name)}" target="_blank">👁️</a>` : ""}
+        ${isImage ? `<a href="/api/media/documents/${encodeURIComponent(file.name)}" target="_blank" class="preview-link">👁️</a>` : ""}
         <button type="button" data-delete="${file.name}">удалить</button>
       </td>
     `;
@@ -274,24 +291,11 @@ document.getElementById("mic-btn").addEventListener("click", () => {
   }
 });
 
-// Ollama models
-document.getElementById("apply-models").addEventListener("click", async () => {
-  try {
-    const config = await api("/api/admin/config", {
-      method: "PATCH",
-      body: JSON.stringify({
-        llm_model: document.getElementById("llm-model").value,
-        embedding_model: document.getElementById("embed-model").value,
-      }),
-    });
-    fillConfigForm(config);
-    document.getElementById("models-status").textContent = "Модели применены. Если меняли embedding — переиндексируйте.";
-  } catch (err) {
-    alert(err.message);
-  }
+// Provider
+document.getElementById("llm-provider").addEventListener("change", (e) => {
+  toggleProviderConfig(e.target.value);
 });
 
-// LLM Provider
 document.getElementById("apply-provider").addEventListener("click", async () => {
   try {
     const config = await api("/api/admin/config", {
@@ -304,6 +308,39 @@ document.getElementById("apply-provider").addEventListener("click", async () => 
     });
     fillConfigForm(config);
     document.getElementById("provider-status").textContent = "Провайдер применён.";
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+// Whisper model
+document.getElementById("apply-whisper").addEventListener("click", async () => {
+  try {
+    const config = await api("/api/admin/config", {
+      method: "PATCH",
+      body: JSON.stringify({
+        whisper_model: document.getElementById("whisper-model").value,
+      }),
+    });
+    fillConfigForm(config);
+    document.getElementById("whisper-status").textContent = "Модель STT сохранена.";
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+// Ollama models
+document.getElementById("apply-models").addEventListener("click", async () => {
+  try {
+    const config = await api("/api/admin/config", {
+      method: "PATCH",
+      body: JSON.stringify({
+        llm_model: document.getElementById("llm-model").value,
+        embedding_model: document.getElementById("embed-model").value,
+      }),
+    });
+    fillConfigForm(config);
+    document.getElementById("models-status").textContent = "Модели применены. Если меняли embedding — переиндексируйте.";
   } catch (err) {
     alert(err.message);
   }
