@@ -88,9 +88,10 @@ class RagEngine:
 
     def _create_llm(self):
         if self.cfg.llm_provider == "openai" and self.cfg.llm_api_base_url:
+            base_url = self.cfg.llm_api_base_url.strip().rstrip("/")
             return ChatOpenAI(
                 model=self.cfg.llm_model,
-                base_url=self.cfg.llm_api_base_url,
+                base_url=base_url,
                 api_key=self.cfg.llm_api_key or "sk-placeholder",
                 temperature=0.1,
                 max_tokens=2048,
@@ -199,7 +200,7 @@ class RagEngine:
     def update_provider(self, provider: str, api_base: str = "", api_key: str = "") -> None:
         self.cfg.llm_provider = provider
         if api_base:
-            self.cfg.llm_api_base_url = api_base
+            self.cfg.llm_api_base_url = api_base.strip().rstrip("/")
         if api_key:
             self.cfg.llm_api_key = api_key
         self.llm = self._create_llm()

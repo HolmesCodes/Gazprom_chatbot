@@ -36,7 +36,7 @@ class FactoryAssistantService:
             provider_changed = True
 
         if "llm_api_base_url" in payload:
-            self.cfg.llm_api_base_url = payload["llm_api_base_url"]
+            self.cfg.llm_api_base_url = (payload["llm_api_base_url"] or "").strip().rstrip("/")
 
         if "llm_api_key" in payload:
             self.cfg.llm_api_key = payload["llm_api_key"]
