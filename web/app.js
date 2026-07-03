@@ -24,9 +24,7 @@ function setTab(name) {
   document.querySelectorAll(".panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `panel-${name}`);
   });
-  if (name === "admin") {
-    loadAdmin();
-  }
+  if (name === "admin") loadAdmin();
 }
 
 function appendMessage(containerId, role, text) {
@@ -92,6 +90,23 @@ function openPdfPreview(filename, pageNumber) {
   iframe.className = "pdf-frame";
   body.appendChild(iframe);
   document.getElementById("pdf-modal").classList.remove("hidden");
+}
+
+async function submitQuestion(question) {
+  appendMessage("chat-log", "user", question);
+  try {
+    const result = await api("/api/ask", {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    });
+    appendMessage("chat-log", "bot", result.answer);
+    renderSources(result.sources);
+    if (result.llm_model) {
+      document.getElementById("user-model-badge").textContent = `модель: ${result.llm_model}`;
+    }
+  } catch (err) {
+    appendMessage("chat-log", "system", `Ошибка: ${err.message}`);
+  }
 }
 
 function fillConfigForm(config) {
@@ -177,13 +192,9 @@ function renderIndexStats(status) {
     btn.addEventListener("click", async () => {
       if (!confirm(`Удалить ${btn.dataset.delete}?`)) return;
       try {
-        await api(`/api/admin/documents/${encodeURIComponent(btn.dataset.delete)}?auto_reindex=true`, {
-          method: "DELETE",
-        });
+        await api(`/api/admin/documents/${encodeURIComponent(btn.dataset.delete)}?auto_reindex=true`, { method: "DELETE" });
         await loadAdmin();
-      } catch (err) {
-        alert(err.message);
-      }
+      } catch (err) { alert(err.message); }
     });
   });
 }
@@ -209,15 +220,14 @@ async function loadAdmin() {
   }
 }
 
-// Microphone
+// ── Microphone ──
+
 async function startRecording() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     state.audioChunks = [];
     state.mediaRecorder = new MediaRecorder(stream);
-    state.mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) state.audioChunks.push(e.data);
-    };
+    state.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) state.audioChunks.push(e.data); };
     state.mediaRecorder.onstop = async () => {
       stream.getTracks().forEach((t) => t.stop());
       const blob = new Blob(state.audioChunks, { type: "audio/webm" });
@@ -248,53 +258,35 @@ async function sendAudio(blob) {
     const response = await fetch("/api/stt", { method: "POST", body: formData });
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || "STT error");
-    document.getElementById("ask-input").value = data.text;
-    document.getElementById("ask-form").dispatchEvent(new Event("submit"));
+    const text = data.text.trim();
+    if (text) {
+      document.getElementById("ask-input").value = text;
+      await submitQuestion(text);
+    }
   } catch (err) {
     appendMessage("chat-log", "system", `Ошибка распознавания: ${err.message}`);
   }
 }
 
-// Tab switching
+// ── Events ──
+
 document.querySelectorAll(".tab").forEach((btn) => {
   btn.addEventListener("click", () => setTab(btn.dataset.tab));
 });
 
-// Ask question
 document.getElementById("ask-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const input = document.getElementById("ask-input");
   const question = input.value.trim();
   if (!question) return;
-
-  appendMessage("chat-log", "user", question);
   input.value = "";
-
-  try {
-    const result = await api("/api/ask", {
-      method: "POST",
-      body: JSON.stringify({ question }),
-    });
-    appendMessage("chat-log", "bot", result.answer);
-    renderSources(result.sources);
-    if (result.llm_model) {
-      document.getElementById("user-model-badge").textContent = `модель: ${result.llm_model}`;
-    }
-  } catch (err) {
-    appendMessage("chat-log", "system", `Ошибка: ${err.message}`);
-  }
+  await submitQuestion(question);
 });
 
-// Microphone button
 document.getElementById("mic-btn").addEventListener("click", () => {
-  if (state.isRecording) {
-    stopRecording();
-  } else {
-    startRecording();
-  }
+  if (state.isRecording) stopRecording(); else startRecording();
 });
 
-// Provider
 document.getElementById("llm-provider").addEventListener("change", (e) => {
   toggleProviderConfig(e.target.value);
 });
@@ -311,28 +303,20 @@ document.getElementById("apply-provider").addEventListener("click", async () => 
     });
     fillConfigForm(config);
     document.getElementById("provider-status").textContent = "Провайдер применён.";
-  } catch (err) {
-    alert(err.message);
-  }
+  } catch (err) { alert(err.message); }
 });
 
-// Whisper model
 document.getElementById("apply-whisper").addEventListener("click", async () => {
   try {
     const config = await api("/api/admin/config", {
       method: "PATCH",
-      body: JSON.stringify({
-        whisper_model: document.getElementById("whisper-model").value,
-      }),
+      body: JSON.stringify({ whisper_model: document.getElementById("whisper-model").value }),
     });
     fillConfigForm(config);
     document.getElementById("whisper-status").textContent = "Модель STT сохранена.";
-  } catch (err) {
-    alert(err.message);
-  }
+  } catch (err) { alert(err.message); }
 });
 
-// Models
 document.getElementById("apply-models").addEventListener("click", async () => {
   const provider = document.getElementById("llm-provider").value;
   const llmModel = provider === "openai"
@@ -349,12 +333,9 @@ document.getElementById("apply-models").addEventListener("click", async () => {
     });
     fillConfigForm(config);
     document.getElementById("models-status").textContent = "Модели применены. Если меняли embedding — переиндексируйте.";
-  } catch (err) {
-    alert(err.message);
-  }
+  } catch (err) { alert(err.message); }
 });
 
-// RAG params
 document.getElementById("apply-rag").addEventListener("click", async () => {
   try {
     const config = await api("/api/admin/config", {
@@ -369,63 +350,42 @@ document.getElementById("apply-rag").addEventListener("click", async () => {
     });
     fillConfigForm(config);
     alert("Параметры RAG сохранены");
-  } catch (err) {
-    alert(err.message);
-  }
+  } catch (err) { alert(err.message); }
 });
 
-// Reindex
 document.getElementById("reindex-btn").addEventListener("click", async () => {
   const btn = document.getElementById("reindex-btn");
   btn.disabled = true;
   btn.textContent = "Индексация…";
   try {
-    await api("/api/admin/reindex", {
-      method: "POST",
-      body: JSON.stringify({ recreate: true }),
-    });
+    await api("/api/admin/reindex", { method: "POST", body: JSON.stringify({ recreate: true }) });
     await loadAdmin();
-  } catch (err) {
-    alert(err.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Переиндексировать";
-  }
+  } catch (err) { alert(err.message); } finally { btn.disabled = false; btn.textContent = "Переиндексировать"; }
 });
 
-// Upload
 document.getElementById("upload-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const fileInput = document.getElementById("upload-input");
   const file = fileInput.files[0];
   if (!file) return;
-
   const formData = new FormData();
   formData.append("file", file);
   const autoReindex = document.getElementById("auto-reindex").checked;
-
   try {
-    const response = await fetch(`/api/admin/documents/upload?auto_reindex=${autoReindex}`, {
-      method: "POST",
-      body: formData,
-    });
+    const response = await fetch(`/api/admin/documents/upload?auto_reindex=${autoReindex}`, { method: "POST", body: formData });
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || "Upload failed");
     document.getElementById("upload-status").textContent =
       `Загружен: ${data.upload.name}${data.reindex ? ` · чанков: ${data.reindex.chunks}` : ""}`;
     fileInput.value = "";
     await loadAdmin();
-  } catch (err) {
-    document.getElementById("upload-status").textContent = err.message;
-  }
+  } catch (err) { document.getElementById("upload-status").textContent = err.message; }
 });
 
-// PDF modal
 document.getElementById("modal-close").addEventListener("click", () => {
   document.getElementById("pdf-modal").classList.add("hidden");
   document.getElementById("modal-body").innerHTML = "";
 });
-
 document.getElementById("pdf-modal").addEventListener("click", (e) => {
   if (e.target === e.currentTarget) {
     document.getElementById("pdf-modal").classList.add("hidden");

@@ -91,14 +91,12 @@ class FactoryAssistantService:
 
     def _transcribe_openai(self, audio_data: bytes) -> str:
         from openai import OpenAI
-        client = OpenAI(
-            base_url=self.cfg.llm_api_base_url,
-            api_key=self.cfg.llm_api_key or "sk-placeholder",
-        )
+        base_url = self.cfg.llm_api_base_url.strip().rstrip("/")
+        client = OpenAI(base_url=base_url, api_key=self.cfg.llm_api_key or "sk-placeholder")
         try:
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
-                file=("audio.wav", audio_data, "audio/wav"),
+                file=("audio.webm", audio_data, "audio/webm"),
             )
             return transcript.text.strip()
         except Exception as exc:

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     llm_api_base_url: str = ""
     llm_api_key: str = ""
 
-    whisper_model: str = "tiny"
+    whisper_model: str = "large-v3-turbo"
 
     documents_dir: Path = Path("data/documents")
     chroma_dir: Path = Path("chroma_db")
