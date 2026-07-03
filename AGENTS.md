@@ -42,20 +42,19 @@ python -m factory_assistant.cli ask "вопрос про документы"
                           ▼
                    ┌─────────────┐
                    │  service.py │ ← FactoryAssistantService
-                   │             │   связывает rag + onboarding
-                   └──┬──────┬───┘
-                      ▼      ▼
-              ┌──────────┐  ┌──────────────┐
-              │ rag.py   │  │ onboarding.py│
-              │ RagEngine│  │ Onboarding   │
-              │ ask()    │  │ Manager      │
-              └────┬─────┘  └──────────────┘
-                   │
-              ┌────┴─────┐
-              │ ingest.py│ ← загрузка PDF/парсинг/чанкинг
-              │ ChromaDB │ ← векторное хранилище
-              │ Ollama   │ ← LLM + эмбеддинги (локально)
-              └──────────┘
+                   │             │   ask(), transcribe(), reindex()
+                   └──────┬──────┘
+                          ▼
+                   ┌─────────────┐
+                   │ rag.py      │ ← RagEngine
+                   │             │   ChatOpenAI (Polza.ai)
+                   │             │   OllamaEmbeddings (локально)
+                   └──────┬──────┘
+                          ▼
+                   ┌─────────────┐
+                   │ ingest.py   │ ← загрузка/парсинг/чанкинг
+                   │ ChromaDB    │ ← векторное хранилище
+                   └─────────────┘
 ```
 
 ---
@@ -68,8 +67,9 @@ python -m factory_assistant.cli ask "вопрос про документы"
 | Веб-фреймворк | FastAPI + Uvicorn |
 | RAG-пайплайн | LangChain |
 | Векторная БД | ChromaDB 1.5.9 (Rust-бэкенд) |
-| LLM | Ollama: `granite3.3:latest` (~4B) |
-| Эмбеддинги | Ollama: `nomic-embed-text:latest` |
+| LLM | Polza.ai: `deepseek/deepseek-v4-flash` (API) |
+| STT | Polza.ai: `openai/whisper-1` (API) |
+| Эмбеддинги | Ollama: `nomic-embed-text:latest` (локально) |
 | PDF-парсер | PyMuPDFLoader (pymupdf) |
 | DOCX-парсер | Docx2txtLoader |
 | Парсинг .txt/.md | TextLoader (UTF-8) |
@@ -96,16 +96,15 @@ python -m factory_assistant.cli ask "вопрос про документы"
 
 | Файл | Что делает | Ключевые классы/функции |
 |---|---|---|
-| `cli.py` | Точка входа: `factory-ingest`, `factory-serve`, `ask`, `onboarding` | `ingest_main()`, `serve_main()`, `main()` |
+| `cli.py` | Точка входа: `factory-ingest`, `factory-serve`, `ask` | `ingest_main()`, `serve_main()`, `main()` |
 | `api.py` | FastAPI-сервер, CORS, статика | `app`, `lifespan()`, все эндпоинты |
-| `service.py` | Сервис-слой: связывает RAG + онбординг | `FactoryAssistantService` |
+| `service.py` | Сервис-слой: связывает RAG + STT | `FactoryAssistantService` |
 | `rag.py` | RAG-движок: поиск + LLM | `RagEngine`, `RagAnswer`, `SourceReference` |
 | `ingest.py` | Загрузка, парсинг, чанкинг, индексация | `load_documents()`, `split_documents()`, `build_vectorstore()`, `ingest_documents()`, `_clean_pdf_text()`, `_loader_for()`, `_enrich_metadata()` |
 | `config.py` | Настройки (pydantic-settings) | `Settings` |
-| `onboarding.py` | Чек-лист адаптации новичка | `OnboardingManager`, `OnboardingStep`, `OnboardingSession` |
 | `admin.py` | Статус индекса, список моделей Ollama | `get_index_status()`, `list_ollama_models()`, `list_document_files()`, `preview_index_plan()` |
 | `documents.py` | Загрузка/удаление файлов | `save_upload()`, `delete_document()` |
-| `prompts.py` | Системные промпты для LLM | `RAG_SYSTEM_PROMPT`, `RAG_USER_TEMPLATE`, `ONBOARDING_SYSTEM_PROMPT` |
+| `prompts.py` | Системные промпты для LLM | `RAG_SYSTEM_PROMPT`, `RAG_USER_TEMPLATE` |
 
 ---
 
@@ -117,7 +116,7 @@ chunk_overlap: int = 200        # перекрытие между чанками
 top_k: int = 5                  # сколько чанков отдавать LLM
 fetch_k: int = 20               # сколько чанков рассматривать при MMR
 relevance_threshold: float = 0.35  # порог релевантности
-llm_model: str = "granite3.3:latest"
+llm_model: str = "deepseek/deepseek-v4-flash"
 embedding_model: str = "nomic-embed-text:latest"
 ```
 
@@ -166,7 +165,7 @@ Relevance scoring
 LLM chain
   — context = format_docs(retrieved_docs)
   — prompt: RAG_SYSTEM_PROMPT + RAG_USER_TEMPLATE
-  — model: ChatOllama(granite3.3, temperature=0.1)
+  — model: ChatOpenAI(deepseek-v4-flash, temperature=0.1)
   — если LLM ответила "Информация не найдена" → финальный ответ "не найдено"
     │
     ▼
