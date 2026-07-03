@@ -1,0 +1,3 @@
+[console_scripts]
+factory-ingest = factory_assistant.cli:ingest_main
+factory-serve = factory_assistant.cli:serve_main
