@@ -27,6 +27,8 @@ NOISE_KEYWORDS = {
     "пуст", "бел", "фон", "заглуш", "placeholder", "пустое",
 }
 
+_image_cache: dict[str, tuple[bool, int]] = {}
+
 
 @dataclass
 class SourceReference:
@@ -81,6 +83,17 @@ def _extract_image_descriptions(docs: list[Document]) -> dict[str, str]:
 def _is_noise_image(desc: str) -> bool:
     lower = desc.lower()
     return any(kw in lower for kw in NOISE_KEYWORDS)
+
+
+def _check_image(full: Path) -> tuple[bool, int]:
+    """Check if image exists and get size (cached)."""
+    key = str(full)
+    if key in _image_cache:
+        return _image_cache[key]
+    exists = full.exists()
+    size = full.stat().st_size if exists else 0
+    _image_cache[key] = (exists, size)
+    return (exists, size)
 
 
 def _is_relevant_image(desc: str, question: str, answer: str) -> bool:
@@ -287,7 +300,7 @@ class RagEngine:
                 and doc.metadata.get("page_number") == best_page
             ]
 
-        seen_hashes: set[str] = set()
+        seen_hashes: dict[str, str] = {}
         min_size = 3000
         for src in image_sources:
             unique: list[str] = []
@@ -297,9 +310,10 @@ class RagEngine:
                     / Path(src.source_file).stem
                     / img_path
                 )
-                if not full.exists():
+                exists, size = _check_image(full)
+                if not exists:
                     continue
-                if full.stat().st_size < min_size:
+                if size < min_size:
                     continue
 
                 desc = all_image_descriptions.get(img_path, "")
@@ -313,7 +327,7 @@ class RagEngine:
                 h = hashlib.md5(full.read_bytes()).hexdigest()
                 if h in seen_hashes:
                     continue
-                seen_hashes.add(h)
+                seen_hashes[h] = img_path
                 unique.append(img_path)
             if unique:
                 existing = next(
