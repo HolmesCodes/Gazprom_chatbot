@@ -223,10 +223,11 @@ class FactoryAssistantService:
             self.rag.retriever = None
             self.rag.chain = None
 
-        result = ingest_documents(cfg=self.cfg, recreate=False)
+        result = ingest_documents(cfg=self.cfg, recreate=recreate)
         self.rag._try_load_vectorstore()
-        if not self.rag.vectorstore:
+        if not self.rag.vectorstore and not recreate:
             import gc
+
             gc.collect()
             result = ingest_documents(cfg=self.cfg, recreate=False)
             self.rag._try_load_vectorstore()

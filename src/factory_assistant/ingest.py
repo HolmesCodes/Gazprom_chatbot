@@ -132,8 +132,10 @@ def _process_pdf_with_images(
     path: Path,
     images_base_dir: Path,
     ocr_cache_dir: Path,
+    gemini_client=None,
+    gemini_model: str = "",
 ) -> list[Document]:
-    """Загрузить PDF с извлечением картинок и OCR для отсканированных страниц."""
+    """Загрузить PDF с извлечением картинок и описанием через Gemini 2.5."""
     from .ocr import is_page_scanned, ocr_page
     from .pdf_images import extract_pdf_images
 
@@ -145,6 +147,9 @@ def _process_pdf_with_images(
     # Загружаем текстовые страницы через PyMuPDFLoader
     loader = PyMuPDFLoader(str(path))
     raw_docs = loader.load()
+
+    # Папка с картинками этой страницы
+    page_images_dir = images_base_dir / path.stem
 
     for doc in raw_docs:
         page_num = doc.metadata.get("page", 0) + 1  # 1-indexed
@@ -177,6 +182,28 @@ def _process_pdf_with_images(
             meta["image_paths"] = image_paths
 
         content = _clean_pdf_text(content) if content else content
+
+        # НОВОЕ: Описываем картинки через Gemini 2.5
+        if gemini_client and gemini_model and image_paths and content:
+            try:
+                from .gemini_describe import describe_page
+
+                content = describe_page(
+                    client=gemini_client,
+                    model=gemini_model,
+                    page_text=content,
+                    image_paths=image_paths,
+                    page_num=page_num,
+                    images_dir=page_images_dir,
+                )
+                logger.info(
+                    "Gemini: стр. %d из %s — %d картинок описано",
+                    page_num,
+                    path.name,
+                    len(image_paths),
+                )
+            except Exception as exc:
+                logger.warning("Gemini describe failed for page %d: %s", page_num, exc)
 
         if content:
             documents.append(Document(page_content=content, metadata=meta))
@@ -222,6 +249,21 @@ def load_documents(
     images_base_dir.mkdir(parents=True, exist_ok=True)
     ocr_cache_dir.mkdir(parents=True, exist_ok=True)
 
+    # НОВОЕ: Создаём Gemini клиент для описания картинок
+    gemini_client = None
+    gemini_model = ""
+    if settings.llm_api_base_url and settings.llm_api_key:
+        try:
+            from .gemini_describe import build_gemini_client
+
+            gemini_client = build_gemini_client(
+                settings.llm_api_base_url, settings.llm_api_key
+            )
+            gemini_model = settings.gemini_model
+            logger.info("Gemini client создан: %s", gemini_model)
+        except Exception as exc:
+            logger.warning("Не удалось создать Gemini клиент: %s", exc)
+
     if files is not None:
         paths = files
     else:
@@ -233,8 +275,12 @@ def load_documents(
             continue
         suffix = path.suffix.lower()
         if suffix == ".pdf":
-            # PDF: извлечение картинок + OCR
-            pdf_docs = _process_pdf_with_images(path, images_base_dir, ocr_cache_dir)
+            # PDF: извлечение картинок + OCR + Gemini описания
+            pdf_docs = _process_pdf_with_images(
+                path, images_base_dir, ocr_cache_dir,
+                gemini_client=gemini_client,
+                gemini_model=gemini_model,
+            )
             documents.extend(pdf_docs)
         elif suffix in SUPPORTED_TEXT:
             loader = _loader_for(path)
@@ -265,8 +311,73 @@ def split_documents(
     return chunks
 
 
-def build_embeddings(cfg: Settings | None = None) -> OllamaEmbeddings:
+class _SafeEmbeddings:
+    """Wrapper around OpenAI embeddings with retry on empty response."""
+
+    def __init__(self, base: "OpenAIEmbeddings"):
+        self._base = base
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        if len(texts) <= 3:
+            return self._base.embed_documents(texts)
+        for attempt in range(3):
+            try:
+                return self._base.embed_documents(texts)
+            except ValueError:
+                if attempt < 2:
+                    mid = len(texts) // 2
+                    left = self.embed_documents(texts[:mid])
+                    right = self.embed_documents(texts[mid:])
+                    return left + right
+                raise
+        return self._base.embed_documents(texts)
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._base.embed_query(text)
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
+
+
+def _build_api_embeddings(cfg: Settings):
+    """Build embeddings using raw OpenAI client (bypasses langchain tokenization)."""
+    from openai import OpenAI
+
+    client = OpenAI(
+        base_url=cfg.llm_api_base_url.strip().rstrip("/"),
+        api_key=cfg.llm_api_key,
+    )
+
+    class RawEmbeddings:
+        def __init__(self, client, model):
+            self._client = client
+            self._model = model
+
+        def embed_documents(self, texts: list[str]) -> list[list[float]]:
+            all_embeds = []
+            batch_size = 20
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i + batch_size]
+                resp = self._client.embeddings.create(model=self._model, input=batch)
+                all_embeds.extend([d.embedding for d in resp.data])
+            return all_embeds
+
+        def embed_query(self, text: str) -> list[float]:
+            resp = self._client.embeddings.create(model=self._model, input=[text])
+            return resp.data[0].embedding
+
+    return RawEmbeddings(client, cfg.embedding_model)
+
+
+def build_embeddings(cfg: Settings | None = None):
     cfg = cfg or settings
+    # API эмбеддинги через Polza.ai (raw клиент — обходит баг langchain tokenization)
+    if cfg.llm_api_base_url and cfg.llm_api_key:
+        try:
+            return _build_api_embeddings(cfg)
+        except Exception as exc:
+            logger.warning("API embeddings недоступны, fallback на Ollama: %s", exc)
+    # Fallback на Ollama если нет API
     return OllamaEmbeddings(
         model=cfg.embedding_model,
         base_url=cfg.ollama_base_url,
@@ -343,7 +454,10 @@ def ingest_documents(
         }
 
     chunks = split_documents(documents, cfg)
-    vectorstore.add_documents(chunks)
+    batch_size = 20
+    for i in range(0, len(chunks), batch_size):
+        batch = chunks[i:i + batch_size]
+        vectorstore.add_documents(batch)
     _save_manifest(manifest)
 
     return {

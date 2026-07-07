@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     llm_provider: str = "ollama"
     llm_api_base_url: str = ""
     llm_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
 
     whisper_model: str = "large-v3-turbo"
 

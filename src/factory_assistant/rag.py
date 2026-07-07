@@ -130,46 +130,19 @@ class RagEngine:
             return False
 
     def _retrieve(self, question: str) -> list[Document]:
-        if self.retriever is None:
+        if self.vectorstore is None:
             return []
+
+        # Простой MMR поиск — enriched chunks уже содержат описания картинок
         try:
-            emb_results = self.retriever.invoke(question)
+            return self.retriever.invoke(question)
         except Exception:
-            emb_results = []
-
-        keywords = [w for w in question.split() if len(w) > 3]
-        kw_results: list[Document] = []
-        if keywords:
-            try:
-                kw_results = self.vectorstore.similarity_search(
-                    " ".join(keywords), k=self.cfg.top_k
-                )
-            except Exception:
-                pass
-
-        image_results: list[Document] = []
-        lower_q = question.lower()
-        if any(kw in lower_q for kw in ("картинк", "изображени", "рисунк", "рис.", "фото", "иллюстрац", "покаж", "чертеж", "схем")):
-            for term in ("Рис.", "Приложение", "игровое поле", "размеры", "элементы"):
-                try:
-                    more = self.vectorstore.similarity_search(term, k=self.cfg.top_k)
-                    image_results.extend(more)
-                except Exception:
-                    pass
-
-        seen_ids: set[str] = set()
-        merged: list[Document] = []
-        for doc in emb_results + kw_results + image_results:
-            doc_id = f"{doc.metadata.get('source_file')}:{doc.metadata.get('page_number')}:{doc.page_content[:100]}"
-            if doc_id not in seen_ids:
-                seen_ids.add(doc_id)
-                merged.append(doc)
-        return merged[: self.cfg.top_k]
+            return []
 
     def _build_retriever(self, vectorstore: Chroma):
         return vectorstore.as_retriever(
             search_type="mmr",
-            search_kwargs={"k": self.cfg.top_k, "fetch_k": 50},
+            search_kwargs={"k": self.cfg.top_k, "fetch_k": 20},
         )
 
     def ask(self, question: str) -> RagAnswer:
@@ -192,37 +165,6 @@ class RagEngine:
 
         docs = self._retrieve(question)
 
-        vision_cache: dict[str, str] = {}
-        try:
-            vision_cache = json.loads(
-                Path("data/vision_cache.json").read_text()
-            )
-        except Exception:
-            pass
-
-        if vision_cache:
-            for doc in docs:
-                img_paths = doc.metadata.get("image_paths", []) or []
-                if not img_paths:
-                    continue
-                source_file = doc.metadata.get("source_file", "")
-                page_number = doc.metadata.get("page_number", "")
-                descs: list[str] = []
-                for img_path in img_paths:
-                    full = (
-                        Path("data/images")
-                        / Path(source_file).stem
-                        / img_path
-                    )
-                    cache_key = str(full.resolve())
-                    desc = vision_cache.get(cache_key, "")
-                    if desc:
-                        descs.append(desc)
-                if descs:
-                    extra = "\n\nИзображения на этой странице:\n" + "\n".join(
-                        f"- {d}" for d in descs
-                    )
-                    doc.page_content += extra
         try:
             scored = self.vectorstore.similarity_search_with_relevance_scores(
                 question,
@@ -233,7 +175,15 @@ class RagEngine:
             max_score = 0.0
         sources = [format_source(doc) for doc in docs]
 
-        if not docs or max_score < self.cfg.relevance_threshold:
+        if not docs:
+            return RagAnswer(
+                question=question,
+                answer=NOT_FOUND_ANSWER,
+                sources=[],
+                found_in_kb=False,
+            )
+
+        if max_score < self.cfg.relevance_threshold:
             return RagAnswer(
                 question=question,
                 answer=NOT_FOUND_ANSWER,
@@ -258,24 +208,13 @@ class RagEngine:
         for m in re.finditer(r"стр\.?\s*(\d+)", answer):
             cited_pages.add(int(m.group(1)))
 
+        # Простой фильтр по страницам из ответа LLM
         if cited_pages:
-            filtered_sources = [s for s in sources if s.page_number in cited_pages]
-            if filtered_sources:
-                sources = filtered_sources
+            filtered = [s for s in sources if s.page_number in cited_pages]
+            if filtered:
+                sources = filtered
 
-        query_words = {
-            w.lower()
-            for w in re.findall(r"[а-яёa-z]{4,}", question.lower())
-        }
-
-        vision_cache: dict[str, str] = {}
-        try:
-            vision_cache = json.loads(
-                Path("data/vision_cache.json").read_text()
-            )
-        except Exception:
-            pass
-
+        # Дедупликация картинок по хешу
         seen_hashes: set[str] = set()
         min_size = 3000
         for src in sources:
@@ -286,20 +225,14 @@ class RagEngine:
                     / Path(src.source_file).stem
                     / img_path
                 )
-                if full.exists():
-                    if full.stat().st_size < min_size:
-                        continue
-                    h = hashlib.md5(full.read_bytes()).hexdigest()
-                    if h in seen_hashes:
-                        continue
-                    seen_hashes.add(h)
-                    cache_key = str(full.resolve())
-                    desc = vision_cache.get(cache_key, "")
-                    if desc and query_words:
-                        desc_words = set(re.findall(r"[а-яёa-z]{4,}", desc.lower()))
-                        overlap = query_words & desc_words
-                        if not overlap:
-                            continue
+                if not full.exists():
+                    continue
+                if full.stat().st_size < min_size:
+                    continue
+                h = hashlib.md5(full.read_bytes()).hexdigest()
+                if h in seen_hashes:
+                    continue
+                seen_hashes.add(h)
                 unique.append(img_path)
             src.image_paths = unique
 
