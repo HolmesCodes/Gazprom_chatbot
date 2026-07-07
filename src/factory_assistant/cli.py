@@ -12,6 +12,27 @@ from factory_assistant.ingest import ingest_documents
 from factory_assistant.service import FactoryAssistantService
 
 
+def describe_images_main() -> None:
+    from factory_assistant.vision import describe_image
+
+    images_dir = Path("data/images")
+    if not images_dir.exists():
+        print("Нет директории data/images/")
+        return
+
+    all_images = sorted(images_dir.rglob("*"))
+    total = len(all_images)
+    for i, path in enumerate(all_images, 1):
+        if not path.is_file():
+            continue
+        print(f"[{i}/{total}] {path.relative_to(images_dir)}...", end=" ", flush=True)
+        desc = describe_image(path, api_key=settings.llm_api_key, api_base=settings.llm_api_base_url)
+        if desc:
+            print(f"✓ {desc[:60]}...")
+        else:
+            print("✗ ошибка")
+
+
 def ingest_main() -> None:
     parser = argparse.ArgumentParser(description="Индексация документов завода")
     parser.add_argument(
@@ -65,6 +86,8 @@ def main() -> None:
     serve_parser.add_argument("--host", default=settings.api_host)
     serve_parser.add_argument("--port", type=int, default=settings.api_port)
 
+    sub.add_parser("describe-images", help="Пакетное описание всех картинок через Vision")
+
     args = parser.parse_args()
 
     if args.command == "ingest":
@@ -99,6 +122,10 @@ def main() -> None:
             port=args.port,
             reload=False,
         )
+        return
+
+    if args.command == "describe-images":
+        describe_images_main()
         return
 
     parser.print_help()

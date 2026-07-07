@@ -3,50 +3,278 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Factory Assistant — ИИ-помощник на заводе</title>
+  <title>София — ИИ-помощник на заводе</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Poppins:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <h1>ИИ-помощник на заводе</h1>
-      <p class="muted">RAG-бот по производственной документации</p>
-    </div>
-    <nav class="tabs">
-      <button class="tab active" data-tab="user">Чат</button>
-      <button class="tab" data-tab="admin">Настройки</button>
-    </nav>
-  </header>
 
-  <main>
-    <section id="panel-user" class="panel active">
-      <div class="card">
-        <div class="card-head">
-          <div class="card-head-left">
-            <h2>Чат по документам</h2>
-            <span id="user-model-badge" class="badge">модель: …</span>
-            <span id="user-provider-badge" class="badge provider-badge">Ollama</span>
+<!-- ====== SCREEN: LOGIN ====== -->
+<div id="screen-login" class="screen">
+  <div class="login-container">
+    <div class="login-content">
+      <div class="login-circle-top">
+        <img src="data:image/png;base64,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" alt="София" class="login-logo-img">
+      </div>
+      <h1 class="login-title">ВОЙТИ</h1>
+      <div class="login-bg">
+        <div class="login-field">
+          <span class="login-label">Логин</span>
+          <input id="login-username" type="text" class="login-input" autocomplete="username">
+        </div>
+        <div class="login-field">
+          <span class="login-label">Пароль</span>
+          <input id="login-password" type="password" class="login-input" autocomplete="current-password">
+        </div>
+        <p id="login-error" class="login-error"></p>
+      </div>
+    </div>
+    <div class="login-buttons">
+      <button class="btn btn-back" id="login-to-welcome-btn">Назад</button>
+      <button class="btn btn-next" id="login-btn">Далее</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== SCREEN: WELCOME / REGISTRATION ====== -->
+<div id="screen-welcome" class="screen hidden">
+  <div class="welcome-container">
+    <div class="welcome-left">
+      <h2 class="welcome-title">Добро пожаловать!</h2>
+      <p class="welcome-text">
+        Это София – MVP чат-бот, подключённый к RAG.<br>
+        Она лучшая помощница по поиску в документах.
+      </p>
+      <button class="btn btn-primary" id="welcome-to-register-btn">ЗАРЕГИСТРИРОВАТЬСЯ</button>
+      <button class="btn btn-secondary" id="welcome-to-login-btn">ВОЙТИ</button>
+      <div id="register-form" class="register-form hidden">
+        <h3 class="register-title">Регистрация</h3>
+        <div class="login-field">
+          <span class="login-label">Новый логин</span>
+          <input id="reg-username" type="text" class="login-input" autocomplete="off">
+        </div>
+        <div class="login-field">
+          <span class="login-label">Новый пароль</span>
+          <input id="reg-password" type="password" class="login-input" autocomplete="new-password">
+        </div>
+        <p id="register-error" class="login-error"></p>
+        <button class="btn btn-next" id="register-btn">Создать аккаунт</button>
+      </div>
+    </div>
+    <div class="welcome-right">
+      <svg width="396" height="520" viewBox="0 0 396 520" fill="none">
+        <rect x="0" y="0" width="396" height="520" fill="#1A75BB" rx="20"/>
+        <circle cx="198" cy="120" r="100" fill="white"/>
+        <ellipse cx="198" cy="120" rx="100" ry="45" fill="#D25332"/>
+        <circle cx="162" cy="102" r="14" fill="#D05432"/>
+        <circle cx="234" cy="102" r="14" fill="#D25332"/>
+        <rect x="178" y="140" width="40" height="16" rx="4" fill="#D25332"/>
+        <path d="M108 270 Q198 200 288 270" stroke="#0C407A" stroke-width="6" fill="none"/>
+        <path d="M90 320 Q198 230 306 320" stroke="#0C407A" stroke-width="6" fill="none"/>
+        <path d="M120 370 Q198 300 276 370" stroke="#0C407A" stroke-width="6" fill="none"/>
+        <rect x="98" y="440" width="200" height="46" rx="23" fill="#0C407A"/>
+        <text x="198" y="470" text-anchor="middle" fill="#B1EFFF" font-family="Poppins" font-weight="600" font-size="18">София ИИ-помощник</text>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<!-- ====== SCREEN: MAIN APP ====== -->
+<div id="screen-app" class="screen hidden">
+
+<!-- TOP BAR -->
+<header class="topbar">
+  <div class="logo-section">
+    <img src="data:image/png;base64,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" alt="София" class="logo-img">
+    <h1 class="app-title">София<br>ИИ - помощник</h1>
+  </div>
+
+  <div class="topbar-actions">
+    <button class="topbar-btn" id="btn-new-account">Новый аккаунт</button>
+    <button class="topbar-btn" id="btn-share">Поделиться</button>
+    <button class="topbar-btn" id="btn-settings">Настройки</button>
+  </div>
+
+  <div class="topbar-right">
+    <div class="user-avatar" id="user-avatar">
+      <svg width="97" height="88" viewBox="0 0 97 88" fill="none">
+        <ellipse cx="48.68" cy="44" rx="48.68" ry="44" fill="#ADDAEF"/>
+        <ellipse cx="48.68" cy="60.21" rx="36.915" ry="21.395" fill="#0C407A"/>
+        <ellipse cx="48.68" cy="31.15" rx="19.4715" ry="17.3578" fill="#0C407A"/>
+      </svg>
+    </div>
+    <div class="three-dots" id="dots-menu">
+      <span></span>
+      <span></span>
+      <span></span>
+      <div class="dots-dropdown hidden" id="dots-dropdown">
+        <button data-action="help">Справка</button>
+        <button data-action="theme">Тема</button>
+        <button data-action="logout">Выйти</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN LAYOUT -->
+<div class="main-content">
+
+  <!-- LEFT PANEL -->
+  <aside class="panel panel-left" id="left-panel">
+    <div class="panel-left-header">
+      <span class="panel-left-title">Использованные источники</span>
+    </div>
+    <div class="source-categories" id="source-categories">
+      <div class="src-cat" data-cat="tech_cards">Технические карты</div>
+      <div class="src-cat" data-cat="instructions">Инструкции</div>
+      <div class="src-cat src-cat-dark" data-cat="regulations">Регламенты</div>
+      <div class="src-cat" data-cat="sop">Справочники (SOP)</div>
+      <div class="src-cat src-cat-dark" data-cat="normative">Нормативные документы</div>
+      <div class="src-cat" data-cat="safety">Охрана труда</div>
+    </div>
+    <div id="sources-list" class="sources-list">
+      <div class="sources-empty">Выберите категорию или задайте вопрос</div>
+    </div>
+    <div id="search-bar" class="search-bar hidden">
+      <input type="text" id="search-input" placeholder="Поиск документов..." autocomplete="off">
+      <button id="search-go">Найти</button>
+    </div>
+  </aside>
+
+  <!-- CENTER PANEL -->
+  <main class="panel panel-center">
+    <div class="chat-header">
+      <div class="chat-header-left">
+        <span class="chat-badge">Чат</span>
+        <span id="chat-model-badge" class="model-badge">модель: ...</span>
+        <span id="chat-embed-badge" class="model-badge">embed: ...</span>
+      </div>
+    </div>
+
+    <div id="chat-log" class="chat-log">
+      <div class="welcome-section">
+        <div class="welcome-row">
+          <div class="sofa-avatar">
+            <svg width="78" height="81" viewBox="0 0 78 81" fill="none">
+              <circle cx="39" cy="40.5" r="38" fill="#1A76B9"/>
+              <circle cx="39" cy="40.5" r="30" fill="white"/>
+              <ellipse cx="39" cy="40.5" rx="28" ry="14" fill="#D25332"/>
+              <circle cx="32" cy="34" r="4" fill="#D25332"/>
+              <circle cx="46" cy="34" r="4" fill="#D25332"/>
+              <rect x="34" y="43" width="10" height="5" rx="2" fill="#D25332"/>
+            </svg>
+          </div>
+          <div class="welcome-bubble">
+            <p>Привет! Я София – заводской ИИ-помощник</p>
+            <p>Для новичков: нажмите <strong>/onboard</strong> — пройдем адаптацию по чек-листу</p>
+            <p>Для специалистов: задавайте вопросы по техкартам, охране труда, регламентам — я найду ответ с источником.</p>
+            <p>Отвечаю строго по документам. Если не знаю — скажу честно.</p>
           </div>
         </div>
-        <div id="chat-log" class="chat-log"></div>
-        <form id="ask-form" class="row">
-          <input id="ask-input" type="text" placeholder="Например: как запустить линию после переналадки?" autocomplete="off">
-          <button type="button" id="mic-btn" class="mic-btn" title="Голосовой ввод (Whisper)">🎤</button>
-          <button type="submit">Спросить</button>
-        </form>
+        <div class="example-question" id="example-question">
+          Какая норма затяжки болтов на узле А?
+        </div>
       </div>
+    </div>
 
-      <div class="card">
-        <h2>Источники последнего ответа</h2>
-        <div id="sources-panel" class="sources-panel muted">Пока нет ответа</div>
+    <div class="chat-input-area">
+      <div class="chat-input-row">
+        <input id="ask-input" type="text" placeholder="Задай свой вопрос тут" autocomplete="off">
+        <button type="button" id="mic-btn" class="mic-btn" title="Голосовой ввод">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <rect x="9" y="1" width="6" height="14" rx="3" fill="#0C407A"/>
+            <path d="M5 10a7 7 0 0014 0" stroke="#0C407A" stroke-width="2" stroke-linecap="round"/>
+            <line x1="12" y1="17" x2="12" y2="22" stroke="#0C407A" stroke-width="2" stroke-linecap="round"/>
+            <line x1="8" y1="22" x2="16" y2="22" stroke="#0C407A" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button type="button" id="send-btn" class="send-btn" title="Отправить">
+          <svg width="33" height="33" viewBox="0 0 33 33" fill="none">
+            <circle cx="16.5" cy="16.5" r="16.5" fill="#0C407A"/>
+            <path d="M11 17 L20 17 M16 12 L21 17 L16 22" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </button>
       </div>
-    </section>
+    </div>
+  </main>
 
-    <section id="panel-admin" class="panel">
-      <div class="grid-2">
-        <div class="card">
-          <h2>Поставщик LLM</h2>
+  <!-- RIGHT PANEL -->
+  <aside class="panel panel-right">
+    <div class="commands-header">
+      <span class="commands-title">Меню команд</span>
+    </div>
+    <div class="commands-grid">
+      <button class="cmd-btn" data-cmd="/start">/start</button>
+      <button class="cmd-btn" data-cmd="/back">/back</button>
+      <button class="cmd-btn" data-cmd="/onboard">/onboard</button>
+      <button class="cmd-btn" data-cmd="/by_type">/by_type</button>
+      <button class="cmd-btn" data-cmd="/help">/help</button>
+      <button class="cmd-btn" data-cmd="/by_date">/by_date</button>
+      <button class="cmd-btn" data-cmd="/search">/search</button>
+      <button class="cmd-btn" data-cmd="/recent">/recent</button>
+      <button class="cmd-btn" data-cmd="/faq">/faq</button>
+      <button class="cmd-btn" data-cmd="/contact">/contact</button>
+    </div>
+    <button class="new-chat-btn" id="new-chat-btn">
+      <span>＋</span> Новый чат
+    </button>
+  </aside>
+
+</div>
+</div>
+
+<!-- ====== PREVIEW MODAL ====== -->
+<div id="preview-modal" class="modal-overlay hidden">
+  <div class="modal-content preview-modal-content">
+    <div class="modal-topbar">
+      <span id="preview-title" class="modal-title-text"></span>
+      <div class="modal-topbar-actions">
+        <a id="preview-download" class="modal-download-btn" download>Скачать</a>
+        <button class="modal-close-btn" id="preview-modal-close">&times;</button>
+      </div>
+    </div>
+    <div id="preview-body" class="modal-body"></div>
+  </div>
+</div>
+
+<!-- HELP MODAL -->
+<div id="help-modal" class="modal-overlay hidden">
+  <div class="modal-content help-modal-content">
+    <div class="modal-topbar">
+      <span class="modal-title-text">Справка</span>
+      <button class="modal-close-btn" id="help-modal-close">&times;</button>
+    </div>
+    <div class="modal-body help-body">
+      <h3>Как пользоваться Софией</h3>
+      <p>Задавайте вопросы по производственной документации на русском языке.</p>
+      <p><strong>Команды:</strong></p>
+      <ul>
+        <li><code>/onboard</code> — адаптация нового сотрудника</li>
+        <li><code>/search</code> — поиск по документам</li>
+        <li><code>/recent</code> — последние документы</li>
+        <li><code>/by_type</code> — документы по типу</li>
+        <li><code>/faq</code> — часто задаваемые вопросы</li>
+        <li><code>/contact</code> — контакты</li>
+      </ul>
+      <p>Нажмите на источник в левой панели, чтобы открыть полный текст чанка.</p>
+      <p>Используйте 🎤 для голосового ввода.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN MODAL -->
+<div id="admin-modal" class="modal-overlay hidden">
+  <div class="modal-content admin-modal-content">
+    <div class="modal-topbar">
+      <h2>Настройки</h2>
+      <button class="modal-close-btn" id="admin-modal-close">&times;</button>
+    </div>
+    <div class="modal-scroll">
+      <div class="admin-grid-2">
+        <div class="admin-card">
+          <h3>Поставщик LLM</h3>
           <label>Провайдер
             <select id="llm-provider">
               <option value="ollama">Ollama (локально)</option>
@@ -61,24 +289,22 @@
               <input id="llm-api-key" type="password" placeholder="sk-...">
             </label>
           </div>
-          <button id="apply-provider" type="button">Применить провайдер</button>
-          <p id="provider-status" class="muted small"></p>
+          <button class="admin-btn" id="apply-provider">Применить провайдер</button>
+          <p id="provider-status" class="hint"></p>
         </div>
-
-        <div class="card">
-          <h2>Распознавание речи (STT)</h2>
+        <div class="admin-card">
+          <h3>Распознавание речи (STT)</h3>
           <label>Модель Whisper
             <input id="whisper-model" type="text" placeholder="karanchopda333/whisper">
           </label>
-          <p class="muted small">Локально: faster-whisper. Для OpenAI-провайдера: whisper-1.</p>
-          <button id="apply-whisper" type="button">Сохранить</button>
-          <p id="whisper-status" class="muted small"></p>
+          <p class="hint">Локально: faster-whisper. Для OpenAI: whisper-1.</p>
+          <button class="admin-btn" id="apply-whisper">Сохранить</button>
+          <p id="whisper-status" class="hint"></p>
         </div>
       </div>
-
-      <div class="grid-2">
-        <div class="card">
-          <h2>Модели</h2>
+      <div class="admin-grid-2">
+        <div class="admin-card">
+          <h3>Модели</h3>
           <div id="llm-model-group">
             <label>LLM (ответы)
               <select id="llm-model"></select>
@@ -92,12 +318,11 @@
           <label>Embeddings (индексация)
             <select id="embed-model"></select>
           </label>
-          <button id="apply-models" type="button">Применить модели</button>
-          <p id="models-status" class="muted small"></p>
+          <button class="admin-btn" id="apply-models">Применить модели</button>
+          <p id="models-status" class="hint"></p>
         </div>
-
-        <div class="card">
-          <h2>Параметры RAG</h2>
+        <div class="admin-card">
+          <h3>Параметры RAG</h3>
           <div class="form-grid">
             <label>top_k <input id="cfg-top-k" type="number" min="1" max="20"></label>
             <label>fetch_k <input id="cfg-fetch-k" type="number" min="1" max="100"></label>
@@ -105,33 +330,39 @@
             <label>chunk_overlap <input id="cfg-chunk-overlap" type="number" min="0" max="1000"></label>
             <label>relevance_threshold <input id="cfg-threshold" type="number" min="0" max="1" step="0.01"></label>
           </div>
-          <button id="apply-rag" type="button">Сохранить параметры</button>
-          <p class="muted small">После смены chunk_size/overlap или embedding-модели нужна переиндексация.</p>
+          <button class="admin-btn" id="apply-rag">Сохранить параметры</button>
+          <p class="hint">После смены chunk_size/overlap или embedding нужна переиндексация.</p>
         </div>
       </div>
-
-      <div class="grid-2">
-        <div class="card">
-          <div class="card-head">
-            <h2>Индексация</h2>
-            <button id="reindex-btn" type="button">Переиндексировать</button>
+      <div class="admin-grid-2">
+        <div class="admin-card">
+          <div class="card-head-row">
+            <h3>Индексация</h3>
+            <button class="admin-btn" id="reindex-btn">Переиндексировать</button>
           </div>
           <div id="index-stats" class="stats"></div>
         </div>
-
-        <div class="card">
-          <h2>Загрузка документов</h2>
-          <form id="upload-form" class="row">
+        <div class="admin-card">
+          <h3>Загрузка документов</h3>
+          <form id="upload-form" class="upload-row">
             <input id="upload-input" type="file" accept=".pdf,.docx,.txt,.md,.xlsx,.xls,.csv,.pptx,.html,.jpg,.jpeg,.png,.gif,.webp">
-            <label class="checkbox"><input id="auto-reindex" type="checkbox" checked> переиндексировать</label>
-            <button type="submit">Загрузить</button>
+            <button class="admin-btn" type="submit">Загрузить</button>
           </form>
-          <p id="upload-status" class="muted small">Поддерживаются: PDF, DOCX, TXT, MD, XLSX, CSV, PPTX, HTML, изображения</p>
+          <label class="checkbox"><input id="auto-reindex" type="checkbox" checked> переиндексировать</label>
+          <p id="upload-status" class="hint">Поддерживаются: PDF, DOCX, TXT, MD, XLSX, CSV, PPTX, HTML, изображения</p>
         </div>
       </div>
-
-      <div class="card">
-        <h2>Документы в базе</h2>
+      <div class="admin-card">
+        <div class="card-head-row">
+          <h3>Пользователи</h3>
+          <div id="admin-user-area"></div>
+        </div>
+        <div id="users-list" class="users-list"></div>
+      </div>
+      <div class="admin-card">
+        <div class="card-head-row">
+          <h3>Документы в базе</h3>
+        </div>
         <table class="table">
           <thead>
             <tr>
@@ -145,17 +376,22 @@
           <tbody id="docs-table"></tbody>
         </table>
       </div>
-    </section>
-  </main>
-
-  <div id="pdf-modal" class="modal hidden">
-    <div class="modal-content">
-      <span id="modal-close" class="modal-close">&times;</span>
-      <div id="modal-title" class="modal-title"></div>
-      <div id="modal-body"></div>
     </div>
   </div>
+</div>
 
-  <script src="/static/app.js"></script>
+<!-- IMAGE LIGHTBOX -->
+<div id="image-lightbox" class="modal-overlay hidden">
+  <div class="lightbox-content">
+    <button class="modal-close-btn lightbox-close" id="lightbox-close">&times;</button>
+    <button class="lightbox-nav lightbox-prev" id="lightbox-prev">&#8249;</button>
+    <button class="lightbox-nav lightbox-next" id="lightbox-next">&#8250;</button>
+    <img id="lightbox-img" src="" alt="">
+    <div class="lightbox-counter" id="lightbox-counter"></div>
+    <div class="lightbox-excerpt" id="lightbox-excerpt"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
 </body>
 </html>

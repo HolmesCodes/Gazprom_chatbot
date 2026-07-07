@@ -3,13 +3,15 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from factory_assistant.service import FactoryAssistantService
+from factory_assistant import users
+from factory_assistant.config import settings as app_settings
 
 WEB_DIR = Path(__file__).resolve().parents[2] / "web"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
@@ -59,6 +61,22 @@ class ConfigUpdateRequest(BaseModel):
     top_k: int | None = Field(default=None, ge=1, le=20)
     fetch_k: int | None = Field(default=None, ge=1, le=100)
     relevance_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class AuthLoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class AuthRegisterRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class AuthCreateUserRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=200)
+    role: str = "user"
 
 
 def _get_service() -> FactoryAssistantService:
@@ -118,6 +136,28 @@ async def speech_to_text(file: UploadFile = File(...)) -> dict:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+@app.get("/api/documents")
+def list_documents(
+    type: str = Query(None),
+    search: str = Query(None),
+    recent: bool = Query(False),
+) -> dict:
+    return _get_service().list_documents(type=type, search=search, recent=recent)
+
+
+@app.get("/api/documents/categories")
+def document_categories() -> dict:
+    return _get_service().get_document_categories()
+
+
+@app.get("/api/documents/{filename}/preview")
+def document_preview(filename: str, chunk_id: int = Query(None)) -> dict:
+    try:
+        return _get_service().get_document_preview(filename, chunk_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/api/media/{filepath:path}")
 def media(filepath: str) -> FileResponse:
     full_path = (DATA_DIR / filepath).resolve()
@@ -126,6 +166,40 @@ def media(filepath: str) -> FileResponse:
     if not full_path.exists() or not full_path.is_file():
         raise HTTPException(status_code=404, detail="Файл не найден")
     return FileResponse(str(full_path))
+
+
+IMAGES_DIR = DATA_DIR / "images"
+
+
+@app.get("/api/media/images/{filepath:path}")
+def media_images(filepath: str) -> FileResponse:
+    full_path = (IMAGES_DIR / filepath).resolve()
+    if not str(full_path).startswith(str(IMAGES_DIR.resolve())):
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    if not full_path.exists() or not full_path.is_file():
+        raise HTTPException(status_code=404, detail="Изображение не найдено")
+    return FileResponse(str(full_path))
+
+
+class DescribeImagesRequest(BaseModel):
+    paths: list[str]
+    source_file: str = ""
+
+
+@app.post("/api/media/images/describe")
+def describe_images(payload: DescribeImagesRequest) -> dict:
+    try:
+        from factory_assistant.vision import describe_images as _describe
+
+        descs = _describe(
+            payload.paths,
+            source_file=payload.source_file,
+            api_key=app_settings.llm_api_key,
+            api_base=app_settings.llm_api_base_url,
+        )
+        return {"descriptions": descs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/admin/reindex")
@@ -155,6 +229,69 @@ def remove_document(filename: str, auto_reindex: bool = True) -> dict:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# Auth endpoints
+@app.post("/api/auth/login")
+def auth_login(payload: AuthLoginRequest) -> dict:
+    token = users.login(payload.username, payload.password)
+    if not token:
+        raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+    user = users.validate_token(token)
+    return {"token": token, "user": user}
+
+
+@app.post("/api/auth/logout")
+def auth_logout(auth: str = Header("")) -> dict:
+    if auth:
+        users.logout(auth)
+    return {"status": "ok"}
+
+
+@app.get("/api/auth/me")
+def auth_me(auth: str = Header("")) -> dict:
+    if not auth:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+    user = users.validate_token(auth)
+    if not user:
+        raise HTTPException(status_code=401, detail="Токен недействителен")
+    return {"user": user}
+
+
+@app.post("/api/auth/register")
+def auth_register(payload: AuthRegisterRequest) -> dict:
+    try:
+        user = users.register(payload.username, payload.password, role="user")
+        return {"user": user}
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.get("/api/admin/users")
+def admin_list_users(auth: str = Header("")) -> dict:
+    try:
+        return {"users": users.list_users(auth)}
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+
+@app.post("/api/admin/users")
+def admin_create_user(payload: AuthCreateUserRequest, auth: str = Header("")) -> dict:
+    try:
+        return {"user": users.register(payload.username, payload.password, payload.role)}
+    except (ValueError, PermissionError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.delete("/api/admin/users/{username}")
+def admin_delete_user(username: str, auth: str = Header("")) -> dict:
+    try:
+        users.delete_user(auth, username)
+        return {"status": "deleted"}
+    except (PermissionError, ValueError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 # Legacy endpoints

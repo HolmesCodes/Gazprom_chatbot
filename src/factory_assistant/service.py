@@ -1,10 +1,24 @@
 from __future__ import annotations
 
-from factory_assistant.admin import get_index_status, list_ollama_models, preview_index_plan
+import json
+from pathlib import Path
+
+from factory_assistant.admin import get_index_status, list_document_files, list_ollama_models, preview_index_plan
 from factory_assistant.config import Settings, settings
 from factory_assistant.documents import delete_document, save_upload
-from factory_assistant.ingest import ingest_documents
+from factory_assistant.ingest import CATEGORY_KEYWORDS, build_vectorstore, ingest_documents
 from factory_assistant.rag import RagEngine
+
+CATEGORY_LABELS: dict[str, str] = {
+    "tech_cards": "Технические карты",
+    "instructions": "Инструкции",
+    "regulations": "Регламенты",
+    "sop": "Справочники (SOP)",
+    "normative": "Нормативные документы",
+    "safety": "Охрана труда",
+    "onboarding": "Адаптация",
+    "other": "Прочее",
+}
 
 
 class FactoryAssistantService:
@@ -119,6 +133,67 @@ class FactoryAssistantService:
         finally:
             import os
             os.unlink(tmp_path)
+
+    def list_documents(self, type: str | None = None, search: str | None = None, recent: bool = False) -> dict:
+        files = list_document_files(self.cfg.documents_dir)
+        if type:
+            files = [f for f in files if f.get("category") == type]
+        if search:
+            q = search.lower()
+            files = [f for f in files if q in f["name"].lower()]
+        if recent:
+            files.sort(key=lambda f: f.get("modified_at", 0), reverse=True)
+        return {"files": files, "total": len(files)}
+
+    def get_document_categories(self) -> dict:
+        files = list_document_files(self.cfg.documents_dir)
+        cats: dict[str, list[dict]] = {}
+        for f in files:
+            cat = f.get("category", "other")
+            cats.setdefault(cat, []).append(f)
+        return {"categories": cats, "labels": CATEGORY_LABELS}
+
+    def get_document_preview(self, filename: str, chunk_id: int | None = None) -> dict:
+        from factory_assistant.ingest import load_documents, split_documents
+        root = self.cfg.documents_dir.resolve()
+        target = (root / filename).resolve()
+        if root not in target.parents:
+            raise FileNotFoundError("Доступ запрещён")
+        if not target.exists():
+            raise FileNotFoundError(f"Файл не найден: {filename}")
+
+        ext = target.suffix.lower()
+        is_image = ext in {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+        if is_image:
+            return {
+                "filename": filename,
+                "type": "image",
+                "media_url": f"/api/media/documents/{filename}",
+            }
+
+        if chunk_id is not None:
+            docs = load_documents(self.cfg.documents_dir)
+            chunks = split_documents(docs, self.cfg)
+            chunk = next((c for c in chunks if c.metadata.get("chunk_id") == chunk_id and c.metadata.get("source_file") == filename), None)
+            if not chunk:
+                raise FileNotFoundError(f"Чанк {chunk_id} не найден")
+            return {
+                "filename": filename,
+                "type": "chunk",
+                "chunk_id": chunk_id,
+                "content": chunk.page_content,
+                "metadata": chunk.metadata,
+            }
+
+        docs = load_documents(self.cfg.documents_dir)
+        chunks = split_documents(docs, self.cfg)
+        file_chunks = [c for c in chunks if c.metadata.get("source_file") == filename]
+        return {
+            "filename": filename,
+            "type": "document",
+            "chunks_count": len(file_chunks),
+            "preview": file_chunks[0].page_content[:500] if file_chunks else "",
+        }
 
     def upload_document(self, filename: str, content: bytes, *, auto_reindex: bool = True) -> dict:
         saved = save_upload(filename, content, self.cfg.documents_dir)

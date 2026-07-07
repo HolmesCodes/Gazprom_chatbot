@@ -3,13 +3,34 @@ const state = {
   mediaRecorder: null,
   audioChunks: [],
   isRecording: false,
+  chatHistory: JSON.parse(localStorage.getItem("chatHistory") || "[]"),
+  historyIndex: -1,
+  sourcesMode: "sources",
+  currentSources: [],
+  token: localStorage.getItem("token") || "",
+  user: JSON.parse(localStorage.getItem("user") || "null"),
 };
 
+const CATEGORY_LABELS = {
+  tech_cards: "Технические карты",
+  instructions: "Инструкции",
+  regulations: "Регламенты",
+  sop: "Справочники (SOP)",
+  normative: "Нормативные документы",
+  safety: "Охрана труда",
+  onboarding: "Адаптация",
+  other: "Прочее",
+};
+
+// ── Auth helpers ──
+
+function authHeaders() {
+  return state.token ? { "auth": state.token } : {};
+}
+
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
+  const headers = { "Content-Type": "application/json", ...authHeaders(), ...(options.headers || {}) };
+  const response = await fetch(path, { headers, ...options });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(data.detail || response.statusText || "API error");
@@ -17,109 +38,488 @@ async function api(path, options = {}) {
   return data;
 }
 
-function setTab(name) {
-  document.querySelectorAll(".tab").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.tab === name);
-  });
-  document.querySelectorAll(".panel").forEach((panel) => {
-    panel.classList.toggle("active", panel.id === `panel-${name}`);
-  });
-  if (name === "admin") loadAdmin();
+function showScreen(id) {
+  document.querySelectorAll(".screen").forEach((s) => s.classList.add("hidden"));
+  const el = document.getElementById(id);
+  if (el) el.classList.remove("hidden");
 }
 
-function appendMessage(containerId, role, text) {
+async function checkAuth() {
+  if (!state.token) {
+    showScreen("screen-login");
+    return false;
+  }
+  try {
+    const data = await api("/api/auth/me");
+    state.user = data.user;
+    localStorage.setItem("user", JSON.stringify(data.user));
+    showScreen("screen-app");
+    return true;
+  } catch {
+    state.token = "";
+    state.user = null;
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    showScreen("screen-login");
+    return false;
+  }
+}
+
+async function doLogin(username, password) {
+  try {
+    const data = await api("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+    state.token = data.token;
+    state.user = data.user;
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+    showScreen("screen-app");
+    loadConfig();
+    return true;
+  } catch (err) {
+    document.getElementById("login-error").textContent = err.message;
+    return false;
+  }
+}
+
+async function doLogout() {
+  try {
+    await api("/api/auth/logout", { method: "POST" });
+  } catch {}
+  state.token = "";
+  state.user = null;
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  showScreen("screen-login");
+}
+
+async function doRegister(username, password) {
+  try {
+    await api("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+    document.getElementById("register-error").textContent = "Аккаунт создан! Войдите.";
+    document.getElementById("register-form").classList.add("hidden");
+  } catch (err) {
+    document.getElementById("register-error").textContent = err.message;
+  }
+}
+
+// ── Chat ──
+
+function toggleWelcome() {
+  const chatLog = document.getElementById("chat-log");
+  const welcome = chatLog.querySelector(".welcome-section");
+  if (!welcome) return;
+  const hasMessages = chatLog.querySelectorAll(".msg").length > 0;
+  welcome.style.display = hasMessages ? "none" : "flex";
+}
+
+function appendMessage(role, text, images) {
   const el = document.createElement("div");
   el.className = `msg ${role}`;
-  if (role === "bot" && typeof marked !== "undefined") {
-    el.innerHTML = marked.parse(text);
+  if (role === "bot") {
+    const avatarWrap = document.createElement("div");
+    avatarWrap.className = "msg-avatar";
+    avatarWrap.innerHTML = `<svg width="40" height="41" viewBox="0 0 78 81" fill="none">
+      <circle cx="39" cy="40.5" r="38" fill="#1A76B9"/>
+      <ellipse cx="39" cy="40.5" rx="30.5" ry="31" fill="white"/>
+      <ellipse cx="26" cy="48" rx="4.5" ry="5" fill="#D25332"/>
+      <ellipse cx="52" cy="48" rx="4.5" ry="5" fill="#D25332"/>
+      <path d="M30.696 0.5L28.9313 8.35455L25.4019 13.5909L17.9019 19.2636L11.2843 22.7545L5.54899 24.5H0.696045L2.46075 19.2636L5.54899 13.5909L9.51957 9.22727L13.9313 5.3L19.2255 2.68182L25.4019 0.5H30.696Z" fill="#D25332"/>
+      <path d="M0.614258 0.5L2.37896 9.00909L5.90838 14.6818L13.4084 20.8273L20.026 24.6091L25.7613 26.5H30.6143L28.8496 20.8273L25.7613 14.6818L21.7907 9.95455L17.379 5.7L12.0848 2.86364L5.90838 0.5H0.614258Z" fill="#D25332"/>
+      <path d="M1.28198 0.882324C1.28198 0.882324 8.10016 12.1323 16.282 0.882324" stroke="#D25332" stroke-width="3"/>
+    </svg>`;
+    el.appendChild(avatarWrap);
+    if (typeof marked !== "undefined") {
+      const content = document.createElement("div");
+      content.className = "msg-content";
+      content.innerHTML = marked.parse(text);
+      if (images && images.length) {
+        const gallery = document.createElement("div");
+        gallery.className = "msg-gallery";
+        images.forEach((img, idx) => {
+          const item = document.createElement("div");
+          item.className = "msg-gallery-item";
+          const thumb = document.createElement("img");
+          thumb.className = "inline-image";
+          thumb.src = img.src;
+          thumb.alt = img.alt || "";
+          thumb.loading = "lazy";
+          thumb.addEventListener("click", () => openImagePopup(images, idx));
+          item.appendChild(thumb);
+          const meta = document.createElement("div");
+          meta.className = "msg-gallery-meta";
+          if (img.page) {
+            const label = document.createElement("div");
+            label.className = "msg-gallery-label";
+            label.textContent = `стр. ${img.page}`;
+            meta.appendChild(label);
+          }
+          if (img.excerpt) {
+            const excerpt = document.createElement("div");
+            excerpt.className = "msg-gallery-excerpt";
+            excerpt.textContent = img.excerpt.substring(0, 120);
+            meta.appendChild(excerpt);
+          }
+          item.appendChild(meta);
+          gallery.appendChild(item);
+        });
+        content.appendChild(gallery);
+      }
+      el.appendChild(content);
+    } else {
+      const content = document.createElement("div");
+      content.className = "msg-content";
+      content.textContent = text;
+      el.appendChild(content);
+    }
   } else {
     el.textContent = text;
   }
-  const container = document.getElementById(containerId);
-  container.appendChild(el);
-  container.scrollTop = container.scrollHeight;
+  const chatLog = document.getElementById("chat-log");
+  chatLog.appendChild(el);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  toggleWelcome();
 }
 
-function renderSources(sources) {
-  const panel = document.getElementById("sources-panel");
-  panel.innerHTML = "";
-  if (!sources || !sources.length) {
-    panel.classList.add("muted");
-    panel.textContent = "Источники не найдены";
-    return;
-  }
-  panel.classList.remove("muted");
-  sources.forEach((src) => {
-    const block = document.createElement("div");
-    block.className = "source";
-    const title = document.createElement("div");
-    title.className = "source-title";
-    title.textContent = `${src.source_file}${src.page_number ? ` · стр. ${src.page_number}` : ""}${src.chunk_id != null ? ` · chunk #${src.chunk_id}` : ""}`;
-    const ext = src.source_file.split(".").pop().toLowerCase();
-    if (ext === "pdf") {
-      const btn = document.createElement("button");
-      btn.className = "pdf-btn";
-      btn.textContent = "📄 Открыть PDF";
-      btn.addEventListener("click", () => openPdfPreview(src.source_file, src.page_number));
-      title.appendChild(btn);
-    }
-    if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
-      const link = document.createElement("a");
-      link.href = `/api/media/documents/${encodeURIComponent(src.source_file)}`;
-      link.target = "_blank";
-      link.textContent = "🖼️ Открыть";
-      link.className = "pdf-btn";
-      title.appendChild(link);
-    }
-    const excerpt = document.createElement("div");
-    excerpt.className = "muted small";
-    excerpt.textContent = src.excerpt || "";
-    block.appendChild(title);
-    block.appendChild(excerpt);
-    panel.appendChild(block);
-  });
+function showTyping() {
+  const chatLog = document.getElementById("chat-log");
+  const typing = document.createElement("div");
+  typing.className = "typing-indicator";
+  typing.id = "typing-indicator";
+  typing.innerHTML = `
+    <span>София печатает</span>
+    <span class="typing-dots"><span></span><span></span><span></span></span>
+  `;
+  chatLog.appendChild(typing);
+  chatLog.scrollTop = chatLog.scrollHeight;
 }
 
-function openPdfPreview(filename, pageNumber) {
-  const title = `PDF: ${filename}${pageNumber ? ` — стр. ${pageNumber}` : ""}`;
-  document.getElementById("modal-title").textContent = title;
-  const body = document.getElementById("modal-body");
-  body.innerHTML = "";
-  const iframe = document.createElement("iframe");
-  iframe.src = `/api/media/documents/${encodeURIComponent(filename)}${pageNumber ? `#page=${pageNumber}` : ""}`;
-  iframe.className = "pdf-frame";
-  body.appendChild(iframe);
-  document.getElementById("pdf-modal").classList.remove("hidden");
+function hideTyping() {
+  const el = document.getElementById("typing-indicator");
+  if (el) el.remove();
+}
+
+function clearChat() {
+  document.getElementById("chat-log").querySelectorAll(".msg, .typing-indicator").forEach((el) => el.remove());
+  state.currentSources = [];
+  restoreSourcesView();
+  toggleWelcome();
+}
+
+function saveToHistory(question) {
+  state.chatHistory.push(question);
+  if (state.chatHistory.length > 50) state.chatHistory.shift();
+  localStorage.setItem("chatHistory", JSON.stringify(state.chatHistory));
+  state.historyIndex = state.chatHistory.length;
 }
 
 async function submitQuestion(question) {
-  appendMessage("chat-log", "user", question);
+  appendMessage("user", question);
+  saveToHistory(question);
+  showTyping();
   try {
     const result = await api("/api/ask", {
       method: "POST",
       body: JSON.stringify({ question }),
     });
-    appendMessage("chat-log", "bot", result.answer);
+    hideTyping();
+    appendMessage("bot", result.answer, extractImages(result.sources));
+    state.currentSources = result.sources;
     renderSources(result.sources);
     if (result.llm_model) {
-      document.getElementById("user-model-badge").textContent = `модель: ${result.llm_model}`;
+      document.getElementById("chat-model-badge").textContent = `модель: ${result.llm_model}`;
     }
   } catch (err) {
-    appendMessage("chat-log", "system", `Ошибка: ${err.message}`);
+    hideTyping();
+    appendMessage("system", `Ошибка: ${err.message}`);
   }
+}
+
+function extractImages(sources) {
+  if (!sources) return [];
+  const exts = ["jpg", "jpeg", "png", "gif", "webp"];
+  const images = [];
+  const seen = new Set();
+  sources.forEach((s) => {
+    // Картинки из PDF (извлечённые при индексации)
+    if (s.image_paths && s.image_paths.length) {
+      s.image_paths.forEach((img) => {
+        const key = `${s.source_file}::${img}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          images.push({
+            src: `/api/media/images/${encodeURIComponent(s.source_file.replace(/\.[^.]+$/, ""))}/${encodeURIComponent(img)}`,
+            alt: img,
+            source: s.source_file,
+            page: s.page_number,
+            excerpt: s.excerpt || "",
+          });
+        }
+      });
+    }
+    // Standalone image files
+    if (exts.includes(s.source_file.split(".").pop().toLowerCase())) {
+      const key = s.source_file;
+      if (!seen.has(key)) {
+        seen.add(key);
+        images.push({
+          src: `/api/media/documents/${encodeURIComponent(s.source_file)}`,
+          alt: s.source_file,
+          source: s.source_file,
+          page: null,
+        });
+      }
+    }
+  });
+  return images;
+}
+
+// ── Sources ──
+
+function renderSources(sources) {
+  state.sourcesMode = "sources";
+  const list = document.getElementById("sources-list");
+  list.innerHTML = "";
+  if (!sources || !sources.length) {
+    list.innerHTML = '<div class="sources-empty">Источники не найдены</div>';
+    return;
+  }
+  sources.forEach((src) => {
+    const block = document.createElement("div");
+    block.className = "source-item";
+    block.dataset.filename = src.source_file;
+    block.dataset.chunkId = src.chunk_id != null ? src.chunk_id : "";
+    const title = document.createElement("div");
+    title.className = "source-title";
+    title.textContent = `${src.source_file}${src.page_number ? ` · стр. ${src.page_number}` : ""}`;
+    const excerpt = document.createElement("div");
+    excerpt.className = "source-excerpt";
+    excerpt.textContent = src.excerpt || "";
+    block.appendChild(title);
+    block.appendChild(excerpt);
+    block.addEventListener("click", () => openSourcePreview(src.source_file, src.chunk_id));
+    list.appendChild(block);
+  });
+}
+
+function restoreSourcesView() {
+  state.sourcesMode = "sources";
+  renderSources(state.currentSources);
+}
+
+function renderDocResults(results) {
+  state.sourcesMode = "docs";
+  const list = document.getElementById("sources-list");
+  list.innerHTML = "";
+  const backBtn = document.createElement("button");
+  backBtn.className = "back-to-sources";
+  backBtn.textContent = "← Назад к источникам";
+  backBtn.addEventListener("click", restoreSourcesView);
+  list.appendChild(backBtn);
+  if (!results || !results.length) {
+    list.innerHTML += '<div class="sources-empty">Ничего не найдено</div>';
+    return;
+  }
+  results.forEach((doc) => {
+    const div = document.createElement("div");
+    div.className = "doc-result";
+    div.innerHTML = `<div class="doc-name">${doc.name}</div><div class="doc-meta">${(CATEGORY_LABELS[doc.category] || doc.category)}, ${doc.size_kb} KB</div>`;
+    div.addEventListener("click", () => openSourcePreview(doc.name, null));
+    list.appendChild(div);
+  });
+}
+
+function renderGroupedResults(categories, labels) {
+  const list = document.getElementById("sources-list");
+  list.innerHTML = "";
+  const backBtn = document.createElement("button");
+  backBtn.className = "back-to-sources";
+  backBtn.textContent = "← Назад к источникам";
+  backBtn.addEventListener("click", restoreSourcesView);
+  list.appendChild(backBtn);
+  let hasAny = false;
+  Object.entries(categories).forEach(([cat, files]) => {
+    if (!files || !files.length) return;
+    hasAny = true;
+    const title = document.createElement("div");
+    title.className = "cat-group-title";
+    title.textContent = labels[cat] || cat;
+    list.appendChild(title);
+    files.forEach((doc) => {
+      const div = document.createElement("div");
+      div.className = "doc-result";
+      div.innerHTML = `<div class="doc-name">${doc.name}</div><div class="doc-meta">${doc.size_kb} KB</div>`;
+      div.addEventListener("click", () => openSourcePreview(doc.name, null));
+      list.appendChild(div);
+    });
+  });
+  if (!hasAny) {
+    list.innerHTML += '<div class="sources-empty">Нет документов в этой категории</div>';
+  }
+}
+
+// ── Preview modal ──
+
+async function openSourcePreview(filename, chunkId) {
+  const modal = document.getElementById("preview-modal");
+  const title = document.getElementById("preview-title");
+  const body = document.getElementById("preview-body");
+  const download = document.getElementById("preview-download");
+  title.textContent = filename;
+  download.href = `/api/media/documents/${encodeURIComponent(filename)}`;
+  body.innerHTML = '<div class="sources-empty">Загрузка...</div>';
+  modal.classList.remove("hidden");
+  const ext = filename.split(".").pop().toLowerCase();
+  const isImage = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+  if (isImage) {
+    body.innerHTML = `<img src="/api/media/documents/${encodeURIComponent(filename)}" class="preview-body-image" alt="${filename}">`;
+    return;
+  }
+  try {
+    const url = chunkId != null
+      ? `/api/documents/${encodeURIComponent(filename)}/preview?chunk_id=${chunkId}`
+      : `/api/documents/${encodeURIComponent(filename)}/preview`;
+    const data = await api(url);
+    if (data.type === "image") {
+      body.innerHTML = `<img src="${data.media_url}" class="preview-body-image" alt="${filename}">`;
+    } else if (data.type === "chunk") {
+      body.innerHTML = `<div class="preview-body-content">${escapeHtml(data.content)}</div>`;
+    } else {
+      body.innerHTML = `<div class="preview-body-content">${escapeHtml(data.preview || "Нет содержимого")}</div>`;
+    }
+  } catch (err) {
+    body.innerHTML = `<div class="sources-empty">Ошибка загрузки: ${err.message}</div>`;
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function openLightbox(src) {
+  openImagePopup([{ src, alt: "" }], 0);
+}
+
+let _popupImages = [];
+let _popupIndex = 0;
+
+function openImagePopup(images, startIndex) {
+  _popupImages = images;
+  _popupIndex = startIndex || 0;
+  _renderPopup();
+  document.getElementById("image-lightbox").classList.remove("hidden");
+}
+
+function _renderPopup() {
+  const img = _popupImages[_popupIndex];
+  if (!img) return;
+  document.getElementById("lightbox-img").src = img.src;
+  document.getElementById("lightbox-img").alt = img.alt || "";
+  const counter = document.getElementById("lightbox-counter");
+  if (counter) {
+    counter.textContent = _popupImages.length > 1
+      ? `${_popupIndex + 1} / ${_popupImages.length}`
+      : "";
+  }
+  const desc = document.getElementById("lightbox-excerpt");
+  if (desc) {
+    desc.textContent = img.excerpt || "";
+    desc.style.display = img.excerpt ? "" : "none";
+  }
+  const prev = document.getElementById("lightbox-prev");
+  const next = document.getElementById("lightbox-next");
+  if (prev) prev.style.display = _popupImages.length > 1 ? "" : "none";
+  if (next) next.style.display = _popupImages.length > 1 ? "" : "none";
+}
+
+function popupPrev() {
+  if (_popupImages.length === 0) return;
+  _popupIndex = (_popupIndex - 1 + _popupImages.length) % _popupImages.length;
+  _renderPopup();
+}
+
+function popupNext() {
+  if (_popupImages.length === 0) return;
+  _popupIndex = (_popupIndex + 1) % _popupImages.length;
+  _renderPopup();
+}
+
+// ── Category / Search / Commands ──
+
+async function filterByCategory(cat) {
+  try {
+    const data = await api(`/api/documents?type=${encodeURIComponent(cat)}`);
+    renderDocResults(data.files);
+  } catch (err) {
+    document.getElementById("sources-list").innerHTML = `<div class="sources-empty">${err.message}</div>`;
+  }
+}
+
+async function searchDocuments(q) {
+  try {
+    const data = await api(`/api/documents?search=${encodeURIComponent(q)}`);
+    renderDocResults(data.files);
+  } catch (err) {
+    document.getElementById("sources-list").innerHTML = `<div class="sources-empty">${err.message}</div>`;
+  }
+}
+
+async function showRecent() {
+  try {
+    const data = await api("/api/documents?recent=true");
+    renderDocResults(data.files);
+  } catch (err) {
+    document.getElementById("sources-list").innerHTML = `<div class="sources-empty">${err.message}</div>`;
+  }
+}
+
+async function showByType() {
+  try {
+    const data = await api("/api/documents/categories");
+    renderGroupedResults(data.categories, data.labels);
+  } catch (err) {
+    document.getElementById("sources-list").innerHTML = `<div class="sources-empty">${err.message}</div>`;
+  }
+}
+
+// ── Theme ──
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme");
+  const next = current === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next === "dark" ? "dark" : "");
+  localStorage.setItem("theme", next);
+}
+
+function loadTheme() {
+  const saved = localStorage.getItem("theme");
+  if (saved === "dark") {
+    document.documentElement.setAttribute("data-theme", "dark");
+  }
+}
+
+// ── Admin / User Management ──
+
+function openAdminModal() {
+  document.getElementById("admin-modal").classList.remove("hidden");
+  loadAdmin();
+}
+
+function closeAdminModal() {
+  document.getElementById("admin-modal").classList.add("hidden");
 }
 
 function fillConfigForm(config) {
   state.config = config;
-  document.getElementById("user-model-badge").textContent = `модель: ${config.llm_model}`;
-  const providerBadge = document.getElementById("user-provider-badge");
-  if (config.llm_provider === "openai") {
-    providerBadge.textContent = "Polza.ai / OpenAI";
-    providerBadge.classList.add("provider-openai");
-  } else {
-    providerBadge.textContent = "Ollama (локально)";
-    providerBadge.classList.remove("provider-openai");
-  }
+  document.getElementById("chat-model-badge").textContent = `модель: ${config.llm_model}`;
+  document.getElementById("chat-embed-badge").textContent = `embed: ${config.embedding_model}`;
   document.getElementById("cfg-top-k").value = config.top_k;
   document.getElementById("cfg-fetch-k").value = config.fetch_k;
   document.getElementById("cfg-chunk-size").value = config.chunk_size;
@@ -133,48 +533,114 @@ function fillConfigForm(config) {
 }
 
 function toggleProviderConfig(provider) {
-  const isOpenAI = provider === "openai";
-  document.getElementById("openai-config").style.display = isOpenAI ? "block" : "none";
-  document.getElementById("llm-model-group").style.display = isOpenAI ? "none" : "block";
-  document.getElementById("llm-model-custom").style.display = isOpenAI ? "block" : "none";
+  const oa = provider === "openai";
+  document.getElementById("openai-config").style.display = oa ? "block" : "none";
+  document.getElementById("llm-model-group").style.display = oa ? "none" : "block";
+  document.getElementById("llm-model-custom").style.display = oa ? "block" : "none";
 }
 
 function fillModelSelects(models, current) {
-  const llmSelect = document.getElementById("llm-model");
-  const embedSelect = document.getElementById("embed-model");
-  llmSelect.innerHTML = "";
-  embedSelect.innerHTML = "";
-
+  ["llm-model", "embed-model"].forEach((id) => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = "";
+  });
   models.forEach((model) => {
-    const addOpt = (sel, selectedName) => {
+    const addOpt = (id, selectedName) => {
+      const sel = document.getElementById(id);
       const opt = document.createElement("option");
       opt.value = model.name;
       opt.textContent = `${model.name}${model.size_gb ? ` (${model.size_gb} GB)` : ""}`;
       if (model.name === selectedName) opt.selected = true;
       sel.appendChild(opt);
     };
-    addOpt(llmSelect, current.llm_model);
-    addOpt(embedSelect, current.embedding_model);
+    addOpt("llm-model", current.llm_model);
+    addOpt("embed-model", current.embedding_model);
   });
 }
 
-function renderIndexStats(status) {
-  const stats = document.getElementById("index-stats");
-  stats.innerHTML = `
-    <div class="stat"><div class="muted small">Документов</div><div class="value">${status.documents_count}</div></div>
-    <div class="stat"><div class="muted small">Чанков в индексе</div><div class="value">${status.indexed_chunks}</div></div>
-    <div class="stat"><div class="muted small">План чанков</div><div class="value">${status.planned_chunks}</div></div>
-    <div class="stat"><div class="muted small">Embedding</div><div class="value small">${status.embedding_model}</div></div>
-    <div class="stat"><div class="muted small">Chroma</div><div class="value small">${status.chroma_ready ? "готово" : "пусто"}</div></div>
-    <div class="stat"><div class="muted small">Папка</div><div class="value small">${status.documents_dir}</div></div>
+function renderAdminUsers() {
+  const area = document.getElementById("admin-user-area");
+  const list = document.getElementById("users-list");
+  if (!state.user || state.user.role !== "admin") {
+    area.innerHTML = "";
+    list.innerHTML = '<div class="sources-empty">Управление пользователями доступно только администратору</div>';
+    return;
+  }
+  area.innerHTML = `
+    <div class="create-user-form">
+      <input id="new-user-name" type="text" placeholder="Новый логин">
+      <input id="new-user-pass" type="password" placeholder="Пароль">
+      <button id="create-user-btn">Создать</button>
+    </div>
   `;
+  document.getElementById("create-user-btn").addEventListener("click", createUser);
+  loadUsers();
+}
 
+async function loadUsers() {
+  if (!state.user || state.user.role !== "admin") return;
+  try {
+    const data = await api("/api/admin/users");
+    const list = document.getElementById("users-list");
+    list.innerHTML = "";
+    data.users.forEach((u) => {
+      const row = document.createElement("div");
+      row.className = "user-row";
+      const isSelf = u.username === state.user.username;
+      row.innerHTML = `
+        <span class="user-name">${u.username}</span>
+        <span class="user-role">${u.role}</span>
+        ${u.username === "admin" || isSelf
+          ? '<span class="cannot-delete">—</span>'
+          : `<button data-del="${u.username}">удалить</button>`
+        }
+      `;
+      list.appendChild(row);
+    });
+    list.querySelectorAll("[data-del]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm(`Удалить ${btn.dataset.del}?`)) return;
+        try {
+          await api(`/api/admin/users/${encodeURIComponent(btn.dataset.del)}`, { method: "DELETE" });
+          await loadUsers();
+        } catch (err) { alert(err.message); }
+      });
+    });
+  } catch (err) {
+    document.getElementById("users-list").innerHTML = `<div class="sources-empty">${err.message}</div>`;
+  }
+}
+
+async function createUser() {
+  const name = document.getElementById("new-user-name").value.trim();
+  const pass = document.getElementById("new-user-pass").value;
+  if (!name || !pass) { alert("Введите логин и пароль"); return; }
+  try {
+    await api("/api/admin/users", {
+      method: "POST",
+      body: JSON.stringify({ username: name, password: pass, role: "user" }),
+    });
+    document.getElementById("new-user-name").value = "";
+    document.getElementById("new-user-pass").value = "";
+    await loadUsers();
+  } catch (err) { alert(err.message); }
+}
+
+function renderIndexStats(status) {
+  document.getElementById("index-stats").innerHTML = `
+    <div class="stat"><div class="hint">Документов</div><div class="value">${status.documents_count}</div></div>
+    <div class="stat"><div class="hint">Чанков в индексе</div><div class="value">${status.indexed_chunks}</div></div>
+    <div class="stat"><div class="hint">План чанков</div><div class="value">${status.planned_chunks}</div></div>
+    <div class="stat"><div class="hint">Embedding</div><div class="value" style="font-size:12px">${status.embedding_model}</div></div>
+    <div class="stat"><div class="hint">Chroma</div><div class="value" style="font-size:14px">${status.chroma_ready ? "готово" : "пусто"}</div></div>
+    <div class="stat"><div class="hint">Папка</div><div class="value" style="font-size:12px">${status.documents_dir}</div></div>
+  `;
   const tbody = document.getElementById("docs-table");
   tbody.innerHTML = "";
   status.files.forEach((file) => {
-    const tr = document.createElement("tr");
     const ext = file.name.split(".").pop().toLowerCase();
     const isImage = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+    const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${file.name}</td>
       <td>${file.size_kb} KB</td>
@@ -187,7 +653,6 @@ function renderIndexStats(status) {
     `;
     tbody.appendChild(tr);
   });
-
   tbody.querySelectorAll("[data-delete]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (!confirm(`Удалить ${btn.dataset.delete}?`)) return;
@@ -200,8 +665,12 @@ function renderIndexStats(status) {
 }
 
 async function loadConfig() {
-  const config = await api("/api/config");
-  fillConfigForm(config);
+  try {
+    const config = await api("/api/config");
+    fillConfigForm(config);
+  } catch (err) {
+    appendMessage("system", `Не удалось загрузить конфиг: ${err.message}`);
+  }
 }
 
 async function loadAdmin() {
@@ -213,8 +682,8 @@ async function loadAdmin() {
     fillModelSelects(modelsPayload.models, modelsPayload.current);
     fillConfigForm(modelsPayload.current);
     renderIndexStats(status);
-    document.getElementById("models-status").textContent =
-      `Доступно моделей Ollama: ${modelsPayload.models.length}`;
+    renderAdminUsers();
+    document.getElementById("models-status").textContent = `Доступно моделей Ollama: ${modelsPayload.models.length}`;
   } catch (err) {
     document.getElementById("models-status").textContent = err.message;
   }
@@ -256,41 +725,259 @@ async function sendAudio(blob) {
   formData.append("file", blob, "audio.webm");
   try {
     const response = await fetch("/api/stt", { method: "POST", body: formData });
-    const data = await response.json();
+    let data;
+    try { data = await response.json(); } catch { data = {}; }
     if (!response.ok) throw new Error(data.detail || "STT error");
-    const text = data.text.trim();
+    const text = (data.text || "").trim();
     if (text) {
       document.getElementById("ask-input").value = text;
       await submitQuestion(text);
     }
   } catch (err) {
-    appendMessage("chat-log", "system", `Ошибка распознавания: ${err.message}`);
+    appendMessage("system", `Ошибка распознавания: ${err.message}`);
   }
 }
 
-// ── Events ──
+// ── Init ──
 
-document.querySelectorAll(".tab").forEach((btn) => {
-  btn.addEventListener("click", () => setTab(btn.dataset.tab));
+document.addEventListener("DOMContentLoaded", async () => {
+  loadTheme();
+  const authed = await checkAuth();
+  if (authed) {
+    loadConfig();
+  }
 });
 
-document.getElementById("ask-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
+// ── Auth UI Events ──
+
+document.getElementById("login-btn").addEventListener("click", async () => {
+  const username = document.getElementById("login-username").value.trim();
+  const password = document.getElementById("login-password").value;
+  if (!username || !password) {
+    document.getElementById("login-error").textContent = "Введите логин и пароль";
+    return;
+  }
+  await doLogin(username, password);
+});
+
+document.getElementById("login-username").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("login-btn").click();
+});
+document.getElementById("login-password").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("login-btn").click();
+});
+
+document.getElementById("login-to-welcome-btn").addEventListener("click", () => {
+  document.getElementById("login-error").textContent = "";
+  showScreen("screen-welcome");
+});
+
+document.getElementById("welcome-to-login-btn").addEventListener("click", () => {
+  document.getElementById("register-form").classList.add("hidden");
+  showScreen("screen-login");
+});
+
+document.getElementById("welcome-to-register-btn").addEventListener("click", () => {
+  document.getElementById("register-form").classList.remove("hidden");
+});
+
+document.getElementById("register-btn").addEventListener("click", async () => {
+  const username = document.getElementById("reg-username").value.trim();
+  const password = document.getElementById("reg-password").value;
+  if (!username || !password) {
+    document.getElementById("register-error").textContent = "Введите логин и пароль";
+    return;
+  }
+  await doRegister(username, password);
+});
+
+// ── Send ──
+
+document.getElementById("send-btn").addEventListener("click", () => {
   const input = document.getElementById("ask-input");
   const question = input.value.trim();
   if (!question) return;
   input.value = "";
-  await submitQuestion(question);
+  submitQuestion(question);
 });
 
+document.getElementById("ask-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    document.getElementById("send-btn").click();
+  }
+});
+
+document.getElementById("ask-input").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowUp" && state.chatHistory.length) {
+    if (state.historyIndex > 0) {
+      state.historyIndex--;
+      document.getElementById("ask-input").value = state.chatHistory[state.historyIndex];
+    }
+  } else if (e.key === "ArrowDown") {
+    if (state.historyIndex < state.chatHistory.length - 1) {
+      state.historyIndex++;
+      document.getElementById("ask-input").value = state.chatHistory[state.historyIndex];
+    } else {
+      state.historyIndex = state.chatHistory.length;
+      document.getElementById("ask-input").value = "";
+    }
+  }
+});
+
+// Microphone
 document.getElementById("mic-btn").addEventListener("click", () => {
   if (state.isRecording) stopRecording(); else startRecording();
 });
 
-document.getElementById("llm-provider").addEventListener("change", (e) => {
-  toggleProviderConfig(e.target.value);
+// Example question
+document.getElementById("example-question").addEventListener("click", () => {
+  document.getElementById("ask-input").value = document.getElementById("example-question").textContent.trim();
+  document.getElementById("send-btn").click();
 });
 
+// Command buttons
+document.querySelectorAll(".cmd-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const cmd = btn.dataset.cmd;
+    const input = document.getElementById("ask-input");
+    switch (cmd) {
+      case "/search":
+        input.value = "";
+        document.getElementById("search-bar").classList.remove("hidden");
+        document.getElementById("search-input").focus();
+        break;
+      case "/recent":
+        showRecent();
+        break;
+      case "/by_type":
+        showByType();
+        break;
+      case "/by_date":
+        showRecent();
+        break;
+      case "/back":
+        if (state.chatHistory.length > 1) {
+          state.historyIndex = state.chatHistory.length - 2;
+          input.value = state.chatHistory[state.historyIndex] || "";
+        }
+        break;
+      default:
+        input.value = cmd;
+        document.getElementById("send-btn").click();
+    }
+  });
+});
+
+// Category buttons
+document.querySelectorAll(".src-cat").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".src-cat").forEach((b) => b.classList.remove("src-cat-active"));
+    btn.classList.add("src-cat-active");
+    filterByCategory(btn.dataset.cat);
+  });
+});
+
+// Search bar
+document.getElementById("search-go").addEventListener("click", () => {
+  const q = document.getElementById("search-input").value.trim();
+  if (q) searchDocuments(q);
+});
+document.getElementById("search-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("search-go").click();
+});
+
+// New chat
+document.getElementById("new-chat-btn").addEventListener("click", clearChat);
+
+// Three dots dropdown
+document.getElementById("dots-menu").addEventListener("click", (e) => {
+  e.stopPropagation();
+  document.getElementById("dots-dropdown").classList.toggle("hidden");
+});
+document.addEventListener("click", () => {
+  document.getElementById("dots-dropdown").classList.add("hidden");
+});
+document.querySelectorAll("#dots-dropdown button").forEach((btn) => {
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    document.getElementById("dots-dropdown").classList.add("hidden");
+    const action = btn.dataset.action;
+    if (action === "help") {
+      document.getElementById("help-modal").classList.remove("hidden");
+    } else if (action === "theme") {
+      toggleTheme();
+    } else if (action === "logout") {
+      doLogout();
+    }
+  });
+});
+
+// Share
+document.getElementById("btn-share").addEventListener("click", () => {
+  if (navigator.share) {
+    navigator.share({ title: "София — ИИ-помощник", url: location.href }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(location.href).then(() => alert("Ссылка скопирована")).catch(() => {});
+  }
+});
+
+// New account (in topbar)
+document.getElementById("btn-new-account").addEventListener("click", () => {
+  document.getElementById("register-form").classList.remove("hidden");
+  showScreen("screen-welcome");
+});
+
+// Admin modal
+document.getElementById("btn-settings").addEventListener("click", openAdminModal);
+document.getElementById("admin-modal-close").addEventListener("click", closeAdminModal);
+document.getElementById("admin-modal").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) closeAdminModal();
+});
+
+// Preview modal
+document.getElementById("preview-modal-close").addEventListener("click", () => {
+  document.getElementById("preview-modal").classList.add("hidden");
+});
+document.getElementById("preview-modal").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) document.getElementById("preview-modal").classList.add("hidden");
+});
+
+// Help modal
+document.getElementById("help-modal-close").addEventListener("click", () => {
+  document.getElementById("help-modal").classList.add("hidden");
+});
+document.getElementById("help-modal").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) document.getElementById("help-modal").classList.add("hidden");
+});
+
+// Lightbox
+document.getElementById("lightbox-close").addEventListener("click", () => {
+  document.getElementById("image-lightbox").classList.add("hidden");
+});
+document.getElementById("image-lightbox").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) document.getElementById("image-lightbox").classList.add("hidden");
+});
+document.getElementById("lightbox-prev").addEventListener("click", (e) => {
+  e.stopPropagation();
+  popupPrev();
+});
+document.getElementById("lightbox-next").addEventListener("click", (e) => {
+  e.stopPropagation();
+  popupNext();
+});
+document.addEventListener("keydown", (e) => {
+  const lb = document.getElementById("image-lightbox");
+  if (lb.classList.contains("hidden")) return;
+  if (e.key === "Escape") lb.classList.add("hidden");
+  if (e.key === "ArrowLeft") popupPrev();
+  if (e.key === "ArrowRight") popupNext();
+});
+
+// Provider toggle
+document.getElementById("llm-provider").addEventListener("change", (e) => toggleProviderConfig(e.target.value));
+
+// Apply provider
 document.getElementById("apply-provider").addEventListener("click", async () => {
   try {
     const config = await api("/api/admin/config", {
@@ -306,6 +993,7 @@ document.getElementById("apply-provider").addEventListener("click", async () => 
   } catch (err) { alert(err.message); }
 });
 
+// Apply whisper
 document.getElementById("apply-whisper").addEventListener("click", async () => {
   try {
     const config = await api("/api/admin/config", {
@@ -317,6 +1005,7 @@ document.getElementById("apply-whisper").addEventListener("click", async () => {
   } catch (err) { alert(err.message); }
 });
 
+// Apply models
 document.getElementById("apply-models").addEventListener("click", async () => {
   const provider = document.getElementById("llm-provider").value;
   const llmModel = provider === "openai"
@@ -332,10 +1021,11 @@ document.getElementById("apply-models").addEventListener("click", async () => {
       }),
     });
     fillConfigForm(config);
-    document.getElementById("models-status").textContent = "Модели применены. Если меняли embedding — переиндексируйте.";
+    document.getElementById("models-status").textContent = "Модели применены.";
   } catch (err) { alert(err.message); }
 });
 
+// Apply RAG
 document.getElementById("apply-rag").addEventListener("click", async () => {
   try {
     const config = await api("/api/admin/config", {
@@ -353,6 +1043,7 @@ document.getElementById("apply-rag").addEventListener("click", async () => {
   } catch (err) { alert(err.message); }
 });
 
+// Reindex
 document.getElementById("reindex-btn").addEventListener("click", async () => {
   const btn = document.getElementById("reindex-btn");
   btn.disabled = true;
@@ -363,10 +1054,10 @@ document.getElementById("reindex-btn").addEventListener("click", async () => {
   } catch (err) { alert(err.message); } finally { btn.disabled = false; btn.textContent = "Переиндексировать"; }
 });
 
+// Upload
 document.getElementById("upload-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const fileInput = document.getElementById("upload-input");
-  const file = fileInput.files[0];
+  const file = document.getElementById("upload-input").files[0];
   if (!file) return;
   const formData = new FormData();
   formData.append("file", file);
@@ -375,24 +1066,8 @@ document.getElementById("upload-form").addEventListener("submit", async (event) 
     const response = await fetch(`/api/admin/documents/upload?auto_reindex=${autoReindex}`, { method: "POST", body: formData });
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || "Upload failed");
-    document.getElementById("upload-status").textContent =
-      `Загружен: ${data.upload.name}${data.reindex ? ` · чанков: ${data.reindex.chunks}` : ""}`;
-    fileInput.value = "";
+    document.getElementById("upload-status").textContent = `Загружен: ${data.upload.name}`;
+    document.getElementById("upload-input").value = "";
     await loadAdmin();
   } catch (err) { document.getElementById("upload-status").textContent = err.message; }
-});
-
-document.getElementById("modal-close").addEventListener("click", () => {
-  document.getElementById("pdf-modal").classList.add("hidden");
-  document.getElementById("modal-body").innerHTML = "";
-});
-document.getElementById("pdf-modal").addEventListener("click", (e) => {
-  if (e.target === e.currentTarget) {
-    document.getElementById("pdf-modal").classList.add("hidden");
-    document.getElementById("modal-body").innerHTML = "";
-  }
-});
-
-loadConfig().catch((err) => {
-  appendMessage("chat-log", "system", `Не удалось загрузить конфиг: ${err.message}`);
 });

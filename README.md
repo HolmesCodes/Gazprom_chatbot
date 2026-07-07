@@ -50,13 +50,19 @@ ollama pull nomic-embed-text
 cp .env.example .env
 ```
 
-Отредактируй `.env` — впиши свой API-ключ от Polza.ai:
+Отредактируй `.env` — вставь свои ключи API:
 
-```
-LLM_API_KEY=pza_твой_ключ_здесь
-```
+| Переменная | Где взять | Обязательно |
+|---|---|---|
+| `LLM_API_KEY` | [Polza.ai](https://polza.ai) — после регистрации | ✅ |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` (установка Ollama выше) | ✅ |
+| `LLM_MODEL` | Модель для ответов: `deepseek/deepseek-v4-flash` | опционально |
+| `EMBEDDING_MODEL` | `nomic-embed-text:latest` (из Ollama шагом выше) | опционально |
+| `WHISPER_MODEL` | `whisper-1` через Polza.ai для голосового ввода | опционально |
 
-Ключ получаешь на https://polza.ai после регистрации.
+**ВАЖНО:** Никогда не коммить `.env` в git — он добавлен в `.gitignore`.
+
+Полный список настроек — в файле `.env.example`.
 
 ### 4. Индексация документов
 
@@ -79,16 +85,22 @@ python -m factory_assistant.cli serve
 ## Команды
 
 | Команда | Описание |
-|---|---|
+|---|---|---|
 | `python -m factory_assistant.cli serve` | Запуск веб-сервера |
-| `python -m factory_assistant.cli ingest` | Индексация документов |
+| `python -m factory_assistant.cli ingest` | Индексация документов (инкрементально — только новые/изменённые файлы) |
 | `python -m factory_assistant.cli ask "вопрос"` | Вопрос из терминала |
+| `python -m factory_assistant.cli describe-images` | Пакетное описание изображений через Vision API |
 
 ---
 
 ## Что поддерживается
 
-- **Документы**: PDF, DOCX, TXT, MD, XLSX, CSV, PPTX, HTML, изображения (JPG, PNG)
+- **Документы**: PDF, DOCX, TXT, MD
+- **Изображения из PDF**: автоматическое извлечение встроенных картинок, показ в галерее ответа
+- **Vision API**: описание изображений через **Google Gemini 2.5 Flash Lite** (через Polza.ai) — контекст картинок добавляется к ответу LLM
+- **OCR**: Apple Vision (на Mac) для распознавания текста на сканах
+- **Инкрементальная индексация**: повторный `ingest` обрабатывает только новые/изменённые файлы
+- **Фильтр картинок по релевантности**: показываются только изображения с цитируемых страниц, совпадающие по смыслу с вопросом
 - **Язык**: русский
 - **LLM**: deepseek-v4-flash через Polza.ai (бесплатная)
 - **STT**: whisper-1 через Polza.ai (микрофон в браузере)

@@ -6,7 +6,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 from factory_assistant.config import Settings, settings
-from factory_assistant.ingest import build_vectorstore, load_documents, split_documents
+from factory_assistant.ingest import build_vectorstore, detect_category, load_documents, split_documents
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".xlsx", ".xls", ".csv", ".pptx", ".html", ".htm", ".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
@@ -49,6 +49,7 @@ def list_document_files(documents_dir: Path | None = None) -> list[dict]:
                 "name": path.name,
                 "relative_path": str(path.relative_to(root)),
                 "extension": path.suffix.lower(),
+                "category": detect_category(path.name),
                 "size_bytes": stat.st_size,
                 "size_kb": round(stat.st_size / 1024, 1),
                 "modified_at": stat.st_mtime,
