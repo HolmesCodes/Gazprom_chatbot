@@ -16,8 +16,8 @@ def list_ollama_models(base_url: str | None = None) -> list[dict]:
     try:
         with urlopen(f"{base_url}/api/tags", timeout=5) as response:
             payload = json.loads(response.read().decode())
-    except (URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"Ollama недоступна: {exc}") from exc
+    except (URLError, TimeoutError, json.JSONDecodeError):
+        return []
 
     models = []
     for item in payload.get("models", []):

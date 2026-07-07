@@ -223,17 +223,51 @@ class RagEngine:
                         f"- {d}" for d in descs
                     )
                     doc.page_content += extra
+        # Check relevance by matching retrieved docs to question terms
         try:
-            scored = self.vectorstore.similarity_search_with_relevance_scores(
-                question,
-                k=self.cfg.top_k,
+            question_terms = set(
+                w.lower() for w in question.split() if len(w) > 2
             )
-            max_score = scored[0][1] if scored else 0.0
+            doc_terms: set[str] = set()
+            for doc in docs:
+                terms = set(
+                    w.lower()
+                    for w in doc.page_content.split()
+                    if len(w) > 2
+                )
+                doc_terms |= terms
+
+            overlap = question_terms & doc_terms
+            # If any key term overlaps, docs are relevant
+            # Otherwise, run similarity fallback
+            if not overlap:
+                scored = self.vectorstore.similarity_search_with_relevance_scores(
+                    question, k=1,
+                )
+                max_score = scored[0][1] if scored else 0.0
+
+                if max_score < self.cfg.relevance_threshold:
+                    keywords = " ".join(
+                        w for w in question.split() if len(w) > 3
+                    )
+                    if keywords:
+                        kw_scored = self.vectorstore.similarity_search_with_relevance_scores(
+                            keywords, k=1,
+                        )
+                        max_score = kw_scored[0][1] if kw_scored else max_score
+
+                    if max_score < self.cfg.relevance_threshold:
+                        return RagAnswer(
+                            question=question,
+                            answer=NOT_FOUND_ANSWER,
+                            sources=[],
+                            found_in_kb=False,
+                        )
         except Exception:
-            max_score = 0.0
+            pass
         sources = [format_source(doc) for doc in docs]
 
-        if not docs or max_score < self.cfg.relevance_threshold:
+        if not docs:
             return RagAnswer(
                 question=question,
                 answer=NOT_FOUND_ANSWER,
@@ -257,6 +291,15 @@ class RagEngine:
         cited_pages: set[int] = set()
         for m in re.finditer(r"стр\.?\s*(\d+)", answer):
             cited_pages.add(int(m.group(1)))
+
+        # Edge case: изображения на соседних страницах (±1)
+        expanded_pages: set[int] = set()
+        for p in cited_pages:
+            expanded_pages.add(p)
+            if p > 1:
+                expanded_pages.add(p - 1)
+            expanded_pages.add(p + 1)
+        cited_pages = expanded_pages
 
         if cited_pages:
             filtered_sources = [s for s in sources if s.page_number in cited_pages]

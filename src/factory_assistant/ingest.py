@@ -18,6 +18,7 @@ from langchain_community.document_loaders import (
     UnstructuredPowerPointLoader,
 )
 from langchain_core.documents import Document
+from langchain_openai import OpenAIEmbeddings
 from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -133,8 +134,8 @@ def _process_pdf_with_images(
     images_base_dir: Path,
     ocr_cache_dir: Path,
 ) -> list[Document]:
-    """Загрузить PDF с извлечением картинок и OCR для отсканированных страниц."""
-    from .ocr import is_page_scanned, ocr_page
+    """Загрузить PDF с извлечением картинок + OCR для битых/пустых страниц."""
+    from .ocr import _is_garbled_text, ocr_page
     from .pdf_images import extract_pdf_images
 
     documents: list[Document] = []
@@ -150,16 +151,24 @@ def _process_pdf_with_images(
         page_num = doc.metadata.get("page", 0) + 1  # 1-indexed
         content = doc.page_content.strip()
 
-        # Проверяем, отсканирована ли страница
+        needs_ocr = False
+
+        # Пустая страница (скан)
         if not content or len(content) < 20:
-            if is_page_scanned(str(path), page_num):
-                logger.info("OCR страницы %d из %s...", page_num, path.name)
-                ocr_text = ocr_page(path, page_num, ocr_cache_dir)
-                if ocr_text.strip():
-                    content = ocr_text
-                    logger.info(
-                        "  → OCR: %d символов со стр. %d", len(ocr_text), page_num
-                    )
+            needs_ocr = True
+        # Битая страница (нечитаемые символы)
+        elif _is_garbled_text(content):
+            logger.info("Битая страница %d в %s — будет OCR", page_num, path.name)
+            needs_ocr = True
+
+        if needs_ocr:
+            logger.info("OCR страницы %d из %s...", page_num, path.name)
+            ocr_text = ocr_page(path, page_num, ocr_cache_dir)
+            if ocr_text.strip():
+                content = ocr_text
+                logger.info("  → OCR: %d символов со стр. %d", len(ocr_text), page_num)
+            else:
+                content = content if content else ""
 
         # Собираем пути к картинкам этой страницы
         image_paths = []
@@ -265,8 +274,15 @@ def split_documents(
     return chunks
 
 
-def build_embeddings(cfg: Settings | None = None) -> OllamaEmbeddings:
+def build_embeddings(cfg: Settings | None = None):
     cfg = cfg or settings
+    if cfg.embedding_mode == "api" and cfg.llm_api_base_url:
+        base_url = cfg.llm_api_base_url.strip().rstrip("/")
+        return OpenAIEmbeddings(
+            model=cfg.embedding_model,
+            openai_api_key=cfg.llm_api_key or "sk-placeholder",
+            openai_api_base=base_url,
+        )
     return OllamaEmbeddings(
         model=cfg.embedding_model,
         base_url=cfg.ollama_base_url,

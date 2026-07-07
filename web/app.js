@@ -527,8 +527,10 @@ function fillConfigForm(config) {
   document.getElementById("cfg-threshold").value = config.relevance_threshold;
   document.getElementById("llm-provider").value = config.llm_provider || "ollama";
   document.getElementById("llm-api-base").value = config.llm_api_base_url || "";
+  document.getElementById("llm-api-key").value = config.llm_api_key || "";
   document.getElementById("whisper-model").value = config.whisper_model || "tiny";
   document.getElementById("llm-model-input").value = config.llm_model || "";
+  document.getElementById("embed-mode").value = config.embedding_mode || "api";
   toggleProviderConfig(config.llm_provider);
 }
 
@@ -1018,6 +1020,7 @@ document.getElementById("apply-models").addEventListener("click", async () => {
       body: JSON.stringify({
         llm_model: llmModel,
         embedding_model: document.getElementById("embed-model").value,
+        embedding_mode: document.getElementById("embed-mode").value,
       }),
     });
     fillConfigForm(config);

@@ -318,6 +318,12 @@
           <label>Embeddings (индексация)
             <select id="embed-model"></select>
           </label>
+          <label>Режим эмбеддингов
+            <select id="embed-mode">
+              <option value="api">Polza.ai API (по умолч.)</option>
+              <option value="ollama">Ollama (локально)</option>
+            </select>
+          </label>
           <button class="admin-btn" id="apply-models">Применить модели</button>
           <p id="models-status" class="hint"></p>
         </div>

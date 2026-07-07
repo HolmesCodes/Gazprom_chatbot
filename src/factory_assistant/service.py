@@ -9,6 +9,9 @@ from factory_assistant.documents import delete_document, save_upload
 from factory_assistant.ingest import CATEGORY_KEYWORDS, build_vectorstore, ingest_documents
 from factory_assistant.rag import RagEngine
 
+ENV_FILE = Path(".env")
+ENV_EXAMPLE = Path(".env.example")
+
 CATEGORY_LABELS: dict[str, str] = {
     "tech_cards": "Технические карты",
     "instructions": "Инструкции",
@@ -26,6 +29,37 @@ class FactoryAssistantService:
         self.cfg = cfg or settings
         self.rag = RagEngine(self.cfg)
 
+    def _save_env(self, payload: dict) -> None:
+        key_map = {
+            "llm_api_key": "LLM_API_KEY",
+            "llm_api_base_url": "LLM_API_BASE_URL",
+            "llm_model": "LLM_MODEL",
+            "llm_provider": "LLM_PROVIDER",
+            "embedding_model": "EMBEDDING_MODEL",
+            "embedding_mode": "EMBEDDING_MODE",
+            "whisper_model": "WHISPER_MODEL",
+        }
+        env_path = ENV_FILE
+        if not env_path.exists() and ENV_EXAMPLE.exists():
+            env_path = ENV_EXAMPLE
+        if not env_path.exists():
+            return
+
+        lines = env_path.read_text().split("\n")
+        for key, env_var in key_map.items():
+            if key not in payload or payload[key] is None:
+                continue
+            val = str(payload[key])
+            found = False
+            for i, line in enumerate(lines):
+                if line.strip().startswith(f"{env_var}="):
+                    lines[i] = f"{env_var}={val}"
+                    found = True
+                    break
+            if not found:
+                lines.append(f"{env_var}={val}")
+        ENV_FILE.write_text("\n".join(lines) + "\n")
+
     def get_config(self) -> dict:
         return {
             "ollama_base_url": self.cfg.ollama_base_url,
@@ -33,6 +67,7 @@ class FactoryAssistantService:
             "embedding_model": self.cfg.embedding_model,
             "llm_provider": self.cfg.llm_provider,
             "llm_api_base_url": self.cfg.llm_api_base_url,
+            "embedding_mode": self.cfg.embedding_mode,
             "whisper_model": self.cfg.whisper_model,
             "chunk_size": self.cfg.chunk_size,
             "chunk_overlap": self.cfg.chunk_overlap,
@@ -44,6 +79,8 @@ class FactoryAssistantService:
         }
 
     def update_config(self, payload: dict) -> dict:
+        self._save_env(payload)
+
         provider_changed = False
         if "llm_provider" in payload and payload["llm_provider"]:
             self.cfg.llm_provider = payload["llm_provider"]
@@ -71,6 +108,9 @@ class FactoryAssistantService:
 
         if "embedding_model" in payload and payload["embedding_model"]:
             self.cfg.embedding_model = payload["embedding_model"]
+
+        if "embedding_mode" in payload and payload["embedding_mode"]:
+            self.cfg.embedding_mode = payload["embedding_mode"]
 
         for field in ("chunk_size", "chunk_overlap", "top_k", "fetch_k", "relevance_threshold"):
             if field in payload and payload[field] is not None:
@@ -210,15 +250,14 @@ class FactoryAssistantService:
         return result
 
     def reindex(self, recreate: bool = True) -> dict:
-        if recreate and self.rag.vectorstore is not None:
-            try:
-                existing = self.rag.vectorstore
-                collection = existing._collection
-                ids = collection.get(include=[])["ids"]
-                if ids:
-                    collection.delete(ids=ids)
-            except Exception:
-                pass
+        if recreate:
+            # Полная переиндексация: удаляем chroma_db целиком,
+            # чтобы Chroma пересоздала коллекцию с новым эмбеддингом
+            import shutil
+            chroma_dir = self.cfg.chroma_dir.resolve()
+            if chroma_dir.exists():
+                shutil.rmtree(chroma_dir)
+            chroma_dir.mkdir(parents=True, exist_ok=True)
             self.rag.vectorstore = None
             self.rag.retriever = None
             self.rag.chain = None

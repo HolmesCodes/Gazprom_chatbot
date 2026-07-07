@@ -12,13 +12,15 @@ class Settings(BaseSettings):
 
     ollama_base_url: str = "http://localhost:11434"
     llm_model: str = "deepseek/deepseek-v4-flash"
-    embedding_model: str = "nomic-embed-text:latest"
+    embedding_model: str = "baai/bge-m3"
 
-    llm_provider: str = "ollama"
-    llm_api_base_url: str = ""
+    llm_provider: str = "openai"
+    llm_api_base_url: str = "https://polza.ai/api/v1"
     llm_api_key: str = ""
 
-    whisper_model: str = "large-v3-turbo"
+    embedding_mode: str = "api"
+
+    whisper_model: str = "whisper-1"
 
     documents_dir: Path = Path("data/documents")
     chroma_dir: Path = Path("chroma_db")
