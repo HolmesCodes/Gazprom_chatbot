@@ -14,7 +14,6 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
-from factory_assistant.agents import ImageRelevanceAgent, ReformulationAgent
 from factory_assistant.config import Settings, settings
 from factory_assistant.ingest import build_vectorstore
 from factory_assistant.prompts import RAG_SYSTEM_PROMPT, RAG_USER_TEMPLATE
@@ -22,6 +21,11 @@ from factory_assistant.prompts import RAG_SYSTEM_PROMPT, RAG_USER_TEMPLATE
 logger = logging.getLogger(__name__)
 
 NOT_FOUND_ANSWER = "Информация не найдена в базе знаний"
+
+NOISE_KEYWORDS = {
+    "логотип", "логотипы", "emblem", "logo", "brand", "шапка", "герб",
+    "пуст", "бел", "фон", "заглуш", "placeholder", "пустое",
+}
 
 
 @dataclass
@@ -63,16 +67,33 @@ class RagAnswer:
 
 
 def _extract_image_descriptions(docs: list[Document]) -> dict[str, str]:
-    """Extract Gemini image descriptions from enriched chunks."""
     descriptions = {}
     for doc in docs:
         text = doc.page_content
-        for m in re.finditer(r"(image_\d+\.png|p\d+_img\d+_[a-f0-9]+\.png):\s*(.+)", text):
+        for m in re.finditer(r"(image_?\d+\.png|p\d+_img\d+_[a-f0-9]+\.png):\s*(.+)", text):
             img_name = m.group(1)
             desc = m.group(2).strip()
             if img_name not in descriptions:
                 descriptions[img_name] = desc
     return descriptions
+
+
+def _is_noise_image(desc: str) -> bool:
+    lower = desc.lower()
+    return any(kw in lower for kw in NOISE_KEYWORDS)
+
+
+def _is_relevant_image(desc: str, question: str, answer: str) -> bool:
+    if _is_noise_image(desc):
+        return False
+    if len(desc) < 20:
+        return False
+    combined = f"{question} {answer}".lower()
+    desc_lower = desc.lower()
+    words = set(re.findall(r"[а-яёa-z]{4,}", combined))
+    desc_words = set(re.findall(r"[а-яёa-z]{4,}", desc_lower))
+    overlap = words & desc_words
+    return len(overlap) >= 2
 
 
 def format_source(doc: Document) -> SourceReference:
@@ -114,8 +135,6 @@ class RagEngine:
             ]
         )
         self.chain = None
-        self.reformulation_agent = ReformulationAgent(self.llm)
-        self.image_agent = ImageRelevanceAgent(self.llm)
         self._try_load_vectorstore()
 
     def _create_llm(self):
@@ -181,13 +200,7 @@ class RagEngine:
                 found_in_kb=False,
             )
 
-        # 1. ReformulationAgent — переформулирует вопрос
-        query = self.reformulation_agent.reformulate(question)
-
-        # 2. Retrieve — ищем по переформулированному запросу
-        docs = self._retrieve(query)
-        if not docs:
-            docs = self._retrieve(question)
+        docs = self._retrieve(question)
 
         if not docs:
             return RagAnswer(
@@ -197,10 +210,9 @@ class RagEngine:
                 found_in_kb=False,
             )
 
-        # 3. Relevance score
         try:
             scored = self.vectorstore.similarity_search_with_relevance_scores(
-                query,
+                question,
                 k=self.cfg.top_k,
             )
             max_score = scored[0][1] if scored else 0.0
@@ -215,7 +227,6 @@ class RagEngine:
                 found_in_kb=False,
             )
 
-        # 4. LLM — генерируем ответ
         sources = [format_source(doc) for doc in docs]
         all_image_descriptions = _extract_image_descriptions(docs)
 
@@ -233,39 +244,41 @@ class RagEngine:
                 found_in_kb=False,
             )
 
-        # 5. Фильтрация по цитированным страницам
         cited_pages: set[int] = set()
         for m in re.finditer(r"стр\.?\s*(\d+)", answer):
             cited_pages.add(int(m.group(1)))
+
         if cited_pages:
             filtered = [s for s in sources if s.page_number in cited_pages]
             if filtered:
                 sources = filtered
 
-        # 6. ImageRelevanceAgent — фильтруем картинки
-        sources_for_images = [
-            {
-                "source_file": s.source_file,
-                "page_number": s.page_number,
-                "image_paths": s.image_paths,
-                "image_descriptions": {
-                    img: all_image_descriptions.get(img, "")
-                    for img in s.image_paths
-                },
-            }
-            for s in sources
+        try:
+            scored_docs = self.vectorstore.similarity_search_with_relevance_scores(
+                question, k=self.cfg.top_k,
+            )
+            best_page = scored_docs[0][0].metadata.get("page_number") if scored_docs else None
+            best_file = scored_docs[0][0].metadata.get("source_file") if scored_docs else None
+        except Exception:
+            best_page = None
+            best_file = None
+
+        for src in sources:
+            if best_file and best_page:
+                if src.source_file != best_file or src.page_number != best_page:
+                    src.image_paths = []
+
+        image_sources = [
+            format_source(doc) for doc in docs
+            if best_file and doc.metadata.get("source_file") == best_file
+            and doc.metadata.get("page_number") == best_page
         ]
 
-        relevant_images = self.image_agent.filter_images(answer, sources_for_images)
-
-        # 7. Дедупликация + фильтрация картинок
         seen_hashes: set[str] = set()
         min_size = 3000
-        for src in sources:
+        for src in image_sources:
             unique: list[str] = []
             for img_path in src.image_paths:
-                if relevant_images and img_path not in relevant_images:
-                    continue
                 full = (
                     Path("data/images")
                     / Path(src.source_file).stem
@@ -275,18 +288,36 @@ class RagEngine:
                     continue
                 if full.stat().st_size < min_size:
                     continue
+
+                desc = all_image_descriptions.get(img_path, "")
+                if not _is_relevant_image(desc, question, answer):
+                    logger.info("Image filtered: %s (desc: %s)", img_path, desc[:60])
+                    continue
+
                 h = hashlib.md5(full.read_bytes()).hexdigest()
                 if h in seen_hashes:
                     continue
                 seen_hashes.add(h)
                 unique.append(img_path)
-            src.image_paths = unique
-            src.image_descriptions = {
-                img: all_image_descriptions.get(img, "")
-                for img in unique
-            }
+            if unique:
+                existing = next(
+                    (s for s in sources if s.source_file == src.source_file and s.page_number == src.page_number),
+                    None,
+                )
+                if existing:
+                    existing.image_paths = unique
+                    existing.image_descriptions = {
+                        img: all_image_descriptions.get(img, "")
+                        for img in unique
+                    }
+                else:
+                    src.image_paths = unique
+                    src.image_descriptions = {
+                        img: all_image_descriptions.get(img, "")
+                        for img in unique
+                    }
+                    sources.append(src)
 
-        # 8. Собираем общий dict image_descriptions для ответа
         flat_descriptions = {}
         for src in sources:
             for img, desc in src.image_descriptions.items():
@@ -317,8 +348,6 @@ class RagEngine:
     def update_llm_model(self, model: str) -> None:
         self.cfg.llm_model = model
         self.llm = self._create_llm()
-        self.reformulation_agent = ReformulationAgent(self.llm)
-        self.image_agent = ImageRelevanceAgent(self.llm)
         self._rebuild_chain()
 
     def update_provider(self, provider: str, api_base: str = "", api_key: str = "") -> None:
@@ -328,8 +357,6 @@ class RagEngine:
         if api_key:
             self.cfg.llm_api_key = api_key
         self.llm = self._create_llm()
-        self.reformulation_agent = ReformulationAgent(self.llm)
-        self.image_agent = ImageRelevanceAgent(self.llm)
         self._rebuild_chain()
 
     def update_retrieval_settings(

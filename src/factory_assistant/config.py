@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = 200
     top_k: int = 8
     fetch_k: int = 20
-    relevance_threshold: float = 0.35
+    relevance_threshold: float = 0.15
 
     api_host: str = "127.0.0.1"
     api_port: int = 8000

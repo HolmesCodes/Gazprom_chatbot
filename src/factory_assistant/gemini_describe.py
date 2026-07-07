@@ -23,6 +23,9 @@ DESCRIBE_PROMPT = """\
 - Ключевые характеристики (размеры, формулы, номера, названия)
 - Связь с текстом страницы (если есть)
 
+Файлы изображений (используй ТОЛЬКО эти имена):
+{image_list}
+
 Формат — строго построчно:
 - [имя_файла]: [описание]
 
@@ -88,10 +91,12 @@ def describe_page(
     if not image_contents:
         return page_text
 
+    image_list = "\n".join(f"- {p}" for p in valid_paths)
     prompt = DESCRIBE_PROMPT.format(
         page_num=page_num,
-        page_text=page_text[:3000],  # ограничиваем длину текста
+        page_text=page_text[:3000],
         image_count=len(valid_paths),
+        image_list=image_list,
     )
 
     try:
