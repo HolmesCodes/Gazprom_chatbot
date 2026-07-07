@@ -7,16 +7,16 @@
   --primary-dark: #0C407A;
   --light: #B1EFFF;
   --accent: #D25332;
-  --bubble-bg: #F0F8FF;
+  --bubble-bg: #F7F7F7;
   --shadow: 0 4px 20px rgba(12, 64, 122, 0.12);
   --border: #D4E9F7;
   --input-bg: #B1EFFF;
-  --cmd-text: #0C407A;
+  --cmd-text: #09305B;
   --hover-overlay: 0.85;
   --src-cat-dark-bg: #0C407A;
   --src-cat-dark-text: #B1EFFF;
   --msg-user: #B1EFFF;
-  --msg-bot: #F0F8FF;
+  --msg-bot: #F7F7F7;
   --msg-system: #E8F4FC;
   --code-bg: #0C407A;
   --code-text: #B1EFFF;
@@ -26,9 +26,9 @@
   --delete-btn: #dc2626;
   --recording-bg: #fecaca;
   --mic-bg: #FFFFFF;
-  --radius-sm: 12px;
+  --radius-sm: 20px;
   --radius-md: 20px;
-  --radius-lg: 28px;
+  --radius-lg: 20px;
   --radius-full: 9999px;
 }
 
@@ -69,11 +69,22 @@ body {
   font-weight: 600;
   font-size: 18px;
   min-height: 100vh;
+  color: var(--text-dark);
+  transition: background 0.3s;
+}
+
+#screen-app {
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  transition: background 0.3s;
-  color: var(--text-dark);
+  background: var(--bg);
+}
+
+.app-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* ====== SCREENS ====== */
@@ -110,8 +121,8 @@ body {
 }
 
 .login-circle-top {
-  width: 418px;
-  height: 405px;
+  width: 400px;
+  height: 400px;
   border-radius: 50%;
   background: #f0f0f0;
   display: flex;
@@ -119,7 +130,7 @@ body {
   justify-content: center;
   flex-shrink: 0;
 }
-.login-circle-top svg { width: 111px; height: 117px; }
+.login-circle-top svg { width: 200px; height: 200px; }
 
 .login-title {
   font-family: 'Poppins', sans-serif;
@@ -358,13 +369,13 @@ body {
 .topbar {
   width: 100%;
   max-width: 1400px;
-  padding: 0 24px;
+  padding: 0 20px;
   height: auto;
-  min-height: 80px;
+  min-height: 60px;
   background: var(--card-bg);
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   flex-shrink: 0;
   box-shadow: var(--shadow);
   position: relative;
@@ -389,7 +400,7 @@ body {
 .app-title {
   font-family: 'Poppins', sans-serif;
   font-weight: 700;
-  font-size: 24px;
+  font-size: 18px;
   line-height: 1.2;
   color: var(--text-dark);
   transition: color 0.3s;
@@ -398,7 +409,7 @@ body {
 .topbar-actions {
   flex: 1;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   justify-content: center;
 }
 
@@ -406,24 +417,25 @@ body {
   background: var(--primary);
   border: none;
   border-radius: var(--radius-full);
-  padding: 10px 20px;
+  padding: 6px 16px;
   font-family: 'Poppins', sans-serif;
-  font-weight: 600;
-  font-size: 14px;
+  font-weight: 500;
+  font-size: 13px;
   color: var(--white-text);
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(26, 117, 187, 0.25);
+  gap: 6px;
+  box-shadow: 0 2px 6px rgba(26, 117, 187, 0.2);
 }
 
 .topbar-btn:hover { 
   background: var(--primary-dark);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(26, 117, 187, 0.35);
+  box-shadow: 0 4px 10px rgba(26, 117, 187, 0.3);
 }
 
 .topbar-right {
@@ -440,22 +452,22 @@ body {
   align-items: center;
 }
 .user-avatar svg {
-  width: 97px;
-  height: 88px;
+  width: 56px;
+  height: 50px;
 }
 
 .three-dots {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 5px;
   cursor: pointer;
   position: relative;
-  padding: 4px;
+  padding: 2px;
 }
 
 .three-dots span {
-  width: 20px;
-  height: 20px;
+  width: 10px;
+  height: 10px;
   background: var(--primary-dark);
   border-radius: 50%;
   display: block;
@@ -778,7 +790,6 @@ body {
   border-color: var(--primary);
   transform: scale(1.02);
 }
-}
 
 /* Gallery in bot messages */
 .msg-gallery {
@@ -1045,14 +1056,10 @@ body {
   flex-shrink: 0; 
   width: 56px; 
   height: 56px;
-  background: var(--primary);
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(26, 117, 187, 0.3);
 }
-.sofa-avatar svg { width: 48px; height: 48px; }
 
 .welcome-bubble {
   background: var(--bubble-bg);
@@ -1656,8 +1663,8 @@ body {
 }
 
 @media (max-width: 900px) {
-  .login-circle-top { width: 280px; height: 270px; }
-  .login-circle-top svg { width: 80px; height: 84px; }
+  .login-circle-top { width: 260px; height: 260px; }
+  .login-circle-top svg { width: 130px; height: 130px; }
   .login-bg { padding: 30px 30px; border-radius: 40px; }
   .login-buttons { flex-direction: column; align-items: center; gap: 16px; padding: 20px; }
   .btn-back, .btn-next { width: 100%; max-width: 370px; }

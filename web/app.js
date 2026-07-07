@@ -124,14 +124,14 @@ function appendMessage(role, text, images) {
   if (role === "bot") {
     const avatarWrap = document.createElement("div");
     avatarWrap.className = "msg-avatar";
-    avatarWrap.innerHTML = `<svg width="40" height="41" viewBox="0 0 78 81" fill="none">
-      <circle cx="39" cy="40.5" r="38" fill="#1A76B9"/>
-      <ellipse cx="39" cy="40.5" rx="30.5" ry="31" fill="white"/>
-      <ellipse cx="26" cy="48" rx="4.5" ry="5" fill="#D25332"/>
-      <ellipse cx="52" cy="48" rx="4.5" ry="5" fill="#D25332"/>
-      <path d="M30.696 0.5L28.9313 8.35455L25.4019 13.5909L17.9019 19.2636L11.2843 22.7545L5.54899 24.5H0.696045L2.46075 19.2636L5.54899 13.5909L9.51957 9.22727L13.9313 5.3L19.2255 2.68182L25.4019 0.5H30.696Z" fill="#D25332"/>
-      <path d="M0.614258 0.5L2.37896 9.00909L5.90838 14.6818L13.4084 20.8273L20.026 24.6091L25.7613 26.5H30.6143L28.8496 20.8273L25.7613 14.6818L21.7907 9.95455L17.379 5.7L12.0848 2.86364L5.90838 0.5H0.614258Z" fill="#D25332"/>
-      <path d="M1.28198 0.882324C1.28198 0.882324 8.10016 12.1323 16.282 0.882324" stroke="#D25332" stroke-width="3"/>
+    avatarWrap.innerHTML = `<svg width="48" height="48" viewBox="0 0 80 80" fill="none">
+      <ellipse cx="39" cy="40.5" rx="39" ry="40.5" fill="#1A76B9"/>
+      <ellipse cx="38.5" cy="41" rx="30.5" ry="31" fill="white"/>
+      <ellipse cx="26.5" cy="43" rx="4.5" ry="5" fill="#D25332"/>
+      <ellipse cx="50.5" cy="43" rx="4.5" ry="5" fill="#D25332"/>
+      <path d="M30.696 0.5L28.9313 8.35455L25.4019 13.5909L17.9019 19.2636L11.2843 22.7545L5.54899 24.5H0.696045L2.46075 19.2636L5.54899 13.5909L9.51957 9.22727L13.9313 5.3L19.2255 2.68182L25.4019 0.5H30.696Z" fill="#D25332" transform="translate(7, 11)"/>
+      <path d="M0.614258 0.5L2.37896 9.00909L5.90838 14.6818L13.4084 20.8273L20.026 24.6091L25.7613 26.5H30.6143L28.8496 20.8273L25.7613 14.6818L21.7907 9.95455L17.379 5.7L12.0848 2.86364L5.90838 0.5H0.614258Z" fill="#D25332" transform="translate(38, 11)"/>
+      <path d="M1.28198 0.882324C1.28198 0.882324 8.10016 12.1323 16.282 0.882324" stroke="#D25332" stroke-width="3" fill="none" transform="translate(31, 59)"/>
     </svg>`;
     el.appendChild(avatarWrap);
     if (typeof marked !== "undefined") {
