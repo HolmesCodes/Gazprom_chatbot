@@ -67,6 +67,7 @@ class FactoryAssistantService:
             "embedding_model": self.cfg.embedding_model,
             "llm_provider": self.cfg.llm_provider,
             "llm_api_base_url": self.cfg.llm_api_base_url,
+            "llm_api_key": self.cfg.llm_api_key or "",
             "embedding_mode": self.cfg.embedding_mode,
             "whisper_model": self.cfg.whisper_model,
             "chunk_size": self.cfg.chunk_size,
@@ -124,8 +125,17 @@ class FactoryAssistantService:
             )
         return self.get_config()
 
-    def list_models(self) -> list[dict]:
-        return list_ollama_models(self.cfg.ollama_base_url)
+    def list_models(self) -> dict:
+        ollama_models = list_ollama_models(self.cfg.ollama_base_url)
+        api_models = [
+            {"name": "baai/bge-m3", "source": "api"},
+            {"name": "intfloat/multilingual-e5-large", "source": "api"},
+            {"name": "qwen/qwen3-embedding-4b", "source": "api"},
+            {"name": "qwen/qwen3-embedding-8b", "source": "api"},
+            {"name": "openai/text-embedding-3-small", "source": "api"},
+            {"name": "openai/text-embedding-3-large", "source": "api"},
+        ]
+        return {"ollama": ollama_models, "api": api_models}
 
     def get_index_status(self) -> dict:
         return get_index_status(self.cfg)

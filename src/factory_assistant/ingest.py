@@ -274,12 +274,29 @@ def split_documents(
     return chunks
 
 
+# Модели эмбеддингов, доступные через Polza.ai
+API_EMBEDDING_MODELS = {
+    "baai/bge-m3",
+    "intfloat/multilingual-e5-large",
+    "qwen/qwen3-embedding-4b",
+    "qwen/qwen3-embedding-8b",
+    "openai/text-embedding-3-small",
+    "openai/text-embedding-3-large",
+    "openai/text-embedding-ada-002",
+}
+
+
 def build_embeddings(cfg: Settings | None = None):
     cfg = cfg or settings
     if cfg.embedding_mode == "api" and cfg.llm_api_base_url:
+        # В API-режиме используем только модели, доступные через Polza.ai
+        model = cfg.embedding_model
+        if model not in API_EMBEDDING_MODELS:
+            model = "baai/bge-m3"
+            cfg.embedding_model = model
         base_url = cfg.llm_api_base_url.strip().rstrip("/")
         return OpenAIEmbeddings(
-            model=cfg.embedding_model,
+            model=model,
             openai_api_key=cfg.llm_api_key or "sk-placeholder",
             openai_api_base=base_url,
         )

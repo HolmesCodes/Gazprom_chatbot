@@ -102,10 +102,7 @@ def update_config(payload: ConfigUpdateRequest) -> dict:
 
 @app.get("/api/admin/models")
 def list_models() -> dict:
-    try:
-        models = _get_service().list_models()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    models = _get_service().list_models()
     return {"models": models, "current": _get_service().get_config()}
 
 

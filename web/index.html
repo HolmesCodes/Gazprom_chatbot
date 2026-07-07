@@ -274,30 +274,23 @@
     <div class="modal-scroll">
       <div class="admin-grid-2">
         <div class="admin-card">
-          <h3>Поставщик LLM</h3>
-          <label>Провайдер
-            <select id="llm-provider">
-              <option value="ollama">Ollama (локально)</option>
-              <option value="openai">OpenAI-совместимый (Polza.ai и др.)</option>
-            </select>
+          <h3>API-подключение</h3>
+          <label>API Endpoint
+            <input id="llm-api-base" type="text" placeholder="https://polza.ai/api/v1">
           </label>
-          <div id="openai-config" class="provider-config">
-            <label>API Endpoint
-              <input id="llm-api-base" type="text" placeholder="https://polza.ai/api/v1">
-            </label>
-            <label>API Key
-              <input id="llm-api-key" type="password" placeholder="sk-...">
-            </label>
-          </div>
-          <button class="admin-btn" id="apply-provider">Применить провайдер</button>
+          <label>API Key
+            <input id="llm-api-key" type="password" placeholder="pza_...">
+          </label>
+          <button class="admin-btn" id="apply-provider">Сохранить API-ключ</button>
           <p id="provider-status" class="hint"></p>
         </div>
         <div class="admin-card">
           <h3>Распознавание речи (STT)</h3>
-          <label>Модель Whisper
-            <input id="whisper-model" type="text" placeholder="karanchopda333/whisper">
+          <label>Модель
+            <select id="whisper-model">
+              <option value="whisper-1">whisper-1 (Polza.ai)</option>
+            </select>
           </label>
-          <p class="hint">Локально: faster-whisper. Для OpenAI: whisper-1.</p>
           <button class="admin-btn" id="apply-whisper">Сохранить</button>
           <p id="whisper-status" class="hint"></p>
         </div>
@@ -305,24 +298,11 @@
       <div class="admin-grid-2">
         <div class="admin-card">
           <h3>Модели</h3>
-          <div id="llm-model-group">
-            <label>LLM (ответы)
-              <select id="llm-model"></select>
-            </label>
-          </div>
-          <div id="llm-model-custom" class="provider-config">
-            <label>LLM (ответы)
-              <input id="llm-model-input" type="text" placeholder="deepseek-v4-flash-free">
-            </label>
-          </div>
+          <label>LLM (ответы)
+            <input id="llm-model-input" type="text" placeholder="deepseek/deepseek-v4-flash">
+          </label>
           <label>Embeddings (индексация)
             <select id="embed-model"></select>
-          </label>
-          <label>Режим эмбеддингов
-            <select id="embed-mode">
-              <option value="api">Polza.ai API (по умолч.)</option>
-              <option value="ollama">Ollama (локально)</option>
-            </select>
           </label>
           <button class="admin-btn" id="apply-models">Применить модели</button>
           <p id="models-status" class="hint"></p>
