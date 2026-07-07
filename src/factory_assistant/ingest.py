@@ -26,6 +26,7 @@ from factory_assistant.config import Settings, settings
 logger = logging.getLogger(__name__)
 
 MANIFEST_FILE = Path("data/ingest_manifest.json")
+ENRICHED_CACHE = Path("data/enriched_cache.json")
 
 
 def _load_manifest() -> dict[str, str]:
@@ -40,6 +41,20 @@ def _load_manifest() -> dict[str, str]:
 def _save_manifest(manifest: dict[str, str]) -> None:
     MANIFEST_FILE.parent.mkdir(parents=True, exist_ok=True)
     MANIFEST_FILE.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+
+
+def _load_enriched_cache() -> dict[str, str]:
+    if ENRICHED_CACHE.exists():
+        try:
+            return json.loads(ENRICHED_CACHE.read_text())
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_enriched_cache(cache: dict[str, str]) -> None:
+    ENRICHED_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    ENRICHED_CACHE.write_text(json.dumps(cache, ensure_ascii=False, indent=2))
 
 
 def _file_hash(path: Path) -> str:
@@ -141,6 +156,9 @@ def _process_pdf_with_images(
 
     documents: list[Document] = []
 
+    # Загружаем кэш Gemini описаний
+    enriched_cache = _load_enriched_cache()
+
     # Извлекаем все картинки из PDF
     page_images = extract_pdf_images(path, images_base_dir)
 
@@ -153,6 +171,7 @@ def _process_pdf_with_images(
 
     for doc in raw_docs:
         page_num = doc.metadata.get("page", 0) + 1  # 1-indexed
+        cache_key = f"{path.stem}|{page_num}"
         content = doc.page_content.strip()
 
         # Проверяем, отсканирована ли страница
@@ -183,27 +202,34 @@ def _process_pdf_with_images(
 
         content = _clean_pdf_text(content) if content else content
 
-        # НОВОЕ: Описываем картинки через Gemini 2.5
+        # Описываем картинки через Gemini 2.5 (с кэшем)
         if gemini_client and gemini_model and image_paths and content:
-            try:
-                from .gemini_describe import describe_page
+            cached = enriched_cache.get(cache_key)
+            if cached:
+                content = cached
+                logger.info("Кэш: стр. %d из %s", page_num, path.name)
+            else:
+                try:
+                    from .gemini_describe import describe_page
 
-                content = describe_page(
-                    client=gemini_client,
-                    model=gemini_model,
-                    page_text=content,
-                    image_paths=image_paths,
-                    page_num=page_num,
-                    images_dir=page_images_dir,
-                )
-                logger.info(
-                    "Gemini: стр. %d из %s — %d картинок описано",
-                    page_num,
-                    path.name,
-                    len(image_paths),
-                )
-            except Exception as exc:
-                logger.warning("Gemini describe failed for page %d: %s", page_num, exc)
+                    content = describe_page(
+                        client=gemini_client,
+                        model=gemini_model,
+                        page_text=content,
+                        image_paths=image_paths,
+                        page_num=page_num,
+                        images_dir=page_images_dir,
+                    )
+                    enriched_cache[cache_key] = content
+                    _save_enriched_cache(enriched_cache)
+                    logger.info(
+                        "Gemini: стр. %d из %s — %d картинок описано",
+                        page_num,
+                        path.name,
+                        len(image_paths),
+                    )
+                except Exception as exc:
+                    logger.warning("Gemini describe failed for page %d: %s", page_num, exc)
 
         if content:
             documents.append(Document(page_content=content, metadata=meta))
@@ -394,6 +420,20 @@ def build_vectorstore(
     embeddings = build_embeddings(cfg)
 
     cfg.chroma_dir.mkdir(parents=True, exist_ok=True)
+
+    if recreate:
+        import chromadb
+        from chromadb.config import Settings as ChromaSettings
+
+        client = chromadb.PersistentClient(
+            path=persist_dir,
+            settings=ChromaSettings(anonymized_telemetry=False),
+        )
+        try:
+            client.delete_collection(cfg.collection_name)
+        except Exception:
+            pass
+
     return Chroma(
         collection_name=cfg.collection_name,
         embedding_function=embeddings,

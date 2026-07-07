@@ -42,21 +42,26 @@ def ingest_main() -> None:
         help="Каталог с PDF/DOCX/TXT",
     )
     parser.add_argument(
-        "--no-recreate",
+        "--recreate",
         action="store_true",
-        help="Не удалять существующую векторную базу перед индексацией",
+        help="Пересоздать базу с нуля",
     )
     args = parser.parse_args()
-    if not args.no_recreate:
+    if args.recreate:
         chroma_dir = settings.chroma_dir.resolve()
         if chroma_dir.exists():
             import shutil
             shutil.rmtree(chroma_dir)
         chroma_dir.mkdir(parents=True, exist_ok=True)
-    result = ingest_documents(
-        documents_dir=args.documents_dir,
-        recreate=False,
-    )
+        result = ingest_documents(
+            documents_dir=args.documents_dir,
+            recreate=True,
+        )
+    else:
+        result = ingest_documents(
+            documents_dir=args.documents_dir,
+            recreate=False,
+        )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
@@ -75,7 +80,7 @@ def main() -> None:
 
     ingest_parser = sub.add_parser("ingest", help="Проиндексировать документы")
     ingest_parser.add_argument("--documents-dir", type=Path, default=settings.documents_dir)
-    ingest_parser.add_argument("--no-recreate", action="store_true")
+    ingest_parser.add_argument("--recreate", action="store_true", help="Пересоздать базу с нуля")
 
     ask_parser = sub.add_parser("ask", help="Задать один вопрос RAG-боту")
     ask_parser.add_argument("question", nargs="+")
@@ -91,16 +96,21 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "ingest":
-        if not args.no_recreate:
+        if args.recreate:
             chroma_dir = settings.chroma_dir.resolve()
             if chroma_dir.exists():
                 import shutil
                 shutil.rmtree(chroma_dir)
             chroma_dir.mkdir(parents=True, exist_ok=True)
-        result = ingest_documents(
-            documents_dir=args.documents_dir,
-            recreate=False,
-        )
+            result = ingest_documents(
+                documents_dir=args.documents_dir,
+                recreate=True,
+            )
+        else:
+            result = ingest_documents(
+                documents_dir=args.documents_dir,
+                recreate=False,
+            )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 
