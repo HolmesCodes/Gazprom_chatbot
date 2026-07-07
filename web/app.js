@@ -159,7 +159,12 @@ function appendMessage(role, text, images) {
             label.textContent = `стр. ${img.page}`;
             meta.appendChild(label);
           }
-          if (img.excerpt) {
+          if (img.description) {
+            const desc = document.createElement("div");
+            desc.className = "msg-gallery-description";
+            desc.textContent = img.description;
+            meta.appendChild(desc);
+          } else if (img.excerpt) {
             const excerpt = document.createElement("div");
             excerpt.className = "msg-gallery-excerpt";
             excerpt.textContent = img.excerpt.substring(0, 120);
@@ -228,7 +233,7 @@ async function submitQuestion(question) {
       body: JSON.stringify({ question }),
     });
     hideTyping();
-    appendMessage("bot", result.answer, extractImages(result.sources));
+    appendMessage("bot", result.answer, extractImages(result.sources, result.image_descriptions));
     state.currentSources = result.sources;
     renderSources(result.sources);
     if (result.llm_model) {
@@ -240,11 +245,12 @@ async function submitQuestion(question) {
   }
 }
 
-function extractImages(sources) {
+function extractImages(sources, imageDescriptions) {
   if (!sources) return [];
   const exts = ["jpg", "jpeg", "png", "gif", "webp"];
   const images = [];
   const seen = new Set();
+  const descs = imageDescriptions || {};
   sources.forEach((s) => {
     // Картинки из PDF (извлечённые при индексации)
     if (s.image_paths && s.image_paths.length) {
@@ -252,9 +258,13 @@ function extractImages(sources) {
         const key = `${s.source_file}::${img}`;
         if (!seen.has(key)) {
           seen.add(key);
+          const desc = s.image_descriptions && s.image_descriptions[img]
+            ? s.image_descriptions[img]
+            : descs[img] || "";
           images.push({
             src: `/api/media/images/${encodeURIComponent(s.source_file.replace(/\.[^.]+$/, ""))}/${encodeURIComponent(img)}`,
-            alt: img,
+            alt: desc || img,
+            description: desc,
             source: s.source_file,
             page: s.page_number,
             excerpt: s.excerpt || "",

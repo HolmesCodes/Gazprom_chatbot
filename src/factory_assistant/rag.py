@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,9 +14,12 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
+from factory_assistant.agents import ImageRelevanceAgent, ReformulationAgent
 from factory_assistant.config import Settings, settings
 from factory_assistant.ingest import build_vectorstore
 from factory_assistant.prompts import RAG_SYSTEM_PROMPT, RAG_USER_TEMPLATE
+
+logger = logging.getLogger(__name__)
 
 NOT_FOUND_ANSWER = "Информация не найдена в базе знаний"
 
@@ -28,6 +31,7 @@ class SourceReference:
     chunk_id: int | None = None
     excerpt: str = ""
     image_paths: list[str] = field(default_factory=list)
+    image_descriptions: dict[str, str] = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return {
@@ -36,6 +40,7 @@ class SourceReference:
             "chunk_id": self.chunk_id,
             "excerpt": self.excerpt,
             "image_paths": self.image_paths,
+            "image_descriptions": self.image_descriptions,
         }
 
 
@@ -55,6 +60,19 @@ class RagAnswer:
             "found_in_kb": self.found_in_kb,
             "image_descriptions": self.image_descriptions,
         }
+
+
+def _extract_image_descriptions(docs: list[Document]) -> dict[str, str]:
+    """Extract Gemini image descriptions from enriched chunks."""
+    descriptions = {}
+    for doc in docs:
+        text = doc.page_content
+        for m in re.finditer(r"(image_\d+\.png|p\d+_img\d+_[a-f0-9]+\.png):\s*(.+)", text):
+            img_name = m.group(1)
+            desc = m.group(2).strip()
+            if img_name not in descriptions:
+                descriptions[img_name] = desc
+    return descriptions
 
 
 def format_source(doc: Document) -> SourceReference:
@@ -96,6 +114,8 @@ class RagEngine:
             ]
         )
         self.chain = None
+        self.reformulation_agent = ReformulationAgent(self.llm)
+        self.image_agent = ImageRelevanceAgent(self.llm)
         self._try_load_vectorstore()
 
     def _create_llm(self):
@@ -132,8 +152,6 @@ class RagEngine:
     def _retrieve(self, question: str) -> list[Document]:
         if self.vectorstore is None:
             return []
-
-        # Простой MMR поиск — enriched chunks уже содержат описания картинок
         try:
             return self.retriever.invoke(question)
         except Exception:
@@ -163,17 +181,13 @@ class RagEngine:
                 found_in_kb=False,
             )
 
-        docs = self._retrieve(question)
+        # 1. ReformulationAgent — переформулирует вопрос
+        query = self.reformulation_agent.reformulate(question)
 
-        try:
-            scored = self.vectorstore.similarity_search_with_relevance_scores(
-                question,
-                k=self.cfg.top_k,
-            )
-            max_score = scored[0][1] if scored else 0.0
-        except Exception:
-            max_score = 0.0
-        sources = [format_source(doc) for doc in docs]
+        # 2. Retrieve — ищем по переформулированному запросу
+        docs = self._retrieve(query)
+        if not docs:
+            docs = self._retrieve(question)
 
         if not docs:
             return RagAnswer(
@@ -183,6 +197,16 @@ class RagEngine:
                 found_in_kb=False,
             )
 
+        # 3. Relevance score
+        try:
+            scored = self.vectorstore.similarity_search_with_relevance_scores(
+                query,
+                k=self.cfg.top_k,
+            )
+            max_score = scored[0][1] if scored else 0.0
+        except Exception:
+            max_score = 0.0
+
         if max_score < self.cfg.relevance_threshold:
             return RagAnswer(
                 question=question,
@@ -191,11 +215,16 @@ class RagEngine:
                 found_in_kb=False,
             )
 
+        # 4. LLM — генерируем ответ
+        sources = [format_source(doc) for doc in docs]
+        all_image_descriptions = _extract_image_descriptions(docs)
+
         context = format_docs(docs)
         prompt_msg = self.prompt.invoke(
             {"context": context, "question": question}
         )
         answer = self.llm.invoke(prompt_msg).content
+
         if NOT_FOUND_ANSWER.lower() in answer.lower():
             return RagAnswer(
                 question=question,
@@ -204,22 +233,39 @@ class RagEngine:
                 found_in_kb=False,
             )
 
+        # 5. Фильтрация по цитированным страницам
         cited_pages: set[int] = set()
         for m in re.finditer(r"стр\.?\s*(\d+)", answer):
             cited_pages.add(int(m.group(1)))
-
-        # Простой фильтр по страницам из ответа LLM
         if cited_pages:
             filtered = [s for s in sources if s.page_number in cited_pages]
             if filtered:
                 sources = filtered
 
-        # Дедупликация картинок по хешу
+        # 6. ImageRelevanceAgent — фильтруем картинки
+        sources_for_images = [
+            {
+                "source_file": s.source_file,
+                "page_number": s.page_number,
+                "image_paths": s.image_paths,
+                "image_descriptions": {
+                    img: all_image_descriptions.get(img, "")
+                    for img in s.image_paths
+                },
+            }
+            for s in sources
+        ]
+
+        relevant_images = self.image_agent.filter_images(answer, sources_for_images)
+
+        # 7. Дедупликация + фильтрация картинок
         seen_hashes: set[str] = set()
         min_size = 3000
         for src in sources:
             unique: list[str] = []
             for img_path in src.image_paths:
+                if relevant_images and img_path not in relevant_images:
+                    continue
                 full = (
                     Path("data/images")
                     / Path(src.source_file).stem
@@ -235,12 +281,23 @@ class RagEngine:
                 seen_hashes.add(h)
                 unique.append(img_path)
             src.image_paths = unique
+            src.image_descriptions = {
+                img: all_image_descriptions.get(img, "")
+                for img in unique
+            }
+
+        # 8. Собираем общий dict image_descriptions для ответа
+        flat_descriptions = {}
+        for src in sources:
+            for img, desc in src.image_descriptions.items():
+                flat_descriptions[img] = desc
 
         return RagAnswer(
             question=question,
             answer=answer,
             sources=sources,
             found_in_kb=True,
+            image_descriptions=flat_descriptions,
         )
 
     def reload_vectorstore(self) -> bool:
@@ -260,6 +317,8 @@ class RagEngine:
     def update_llm_model(self, model: str) -> None:
         self.cfg.llm_model = model
         self.llm = self._create_llm()
+        self.reformulation_agent = ReformulationAgent(self.llm)
+        self.image_agent = ImageRelevanceAgent(self.llm)
         self._rebuild_chain()
 
     def update_provider(self, provider: str, api_base: str = "", api_key: str = "") -> None:
@@ -269,6 +328,8 @@ class RagEngine:
         if api_key:
             self.cfg.llm_api_key = api_key
         self.llm = self._create_llm()
+        self.reformulation_agent = ReformulationAgent(self.llm)
+        self.image_agent = ImageRelevanceAgent(self.llm)
         self._rebuild_chain()
 
     def update_retrieval_settings(
