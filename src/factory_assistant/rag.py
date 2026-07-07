@@ -268,11 +268,24 @@ class RagEngine:
                 if src.source_file != best_file or src.page_number != best_page:
                     src.image_paths = []
 
+        mentioned_images: set[str] = set()
+        for m in re.finditer(r"(p\d+_img\d+_[a-f0-9]+\.png|image_\d+\.png)", answer):
+            mentioned_images.add(m.group(1))
+
+        cited_files = {s.source_file for s in sources}
+        cited_pages_int = set(int(m.group(1)) for m in re.finditer(r"стр\.?\s*(\d+)", answer))
+
         image_sources = [
             format_source(doc) for doc in docs
-            if best_file and doc.metadata.get("source_file") == best_file
-            and doc.metadata.get("page_number") == best_page
+            if doc.metadata.get("source_file") in cited_files
+            and doc.metadata.get("page_number") in cited_pages_int
         ]
+        if not image_sources and best_file and best_page:
+            image_sources = [
+                format_source(doc) for doc in docs
+                if doc.metadata.get("source_file") == best_file
+                and doc.metadata.get("page_number") == best_page
+            ]
 
         seen_hashes: set[str] = set()
         min_size = 3000
@@ -291,7 +304,10 @@ class RagEngine:
 
                 desc = all_image_descriptions.get(img_path, "")
                 if not _is_relevant_image(desc, question, answer):
-                    logger.info("Image filtered: %s (desc: %s)", img_path, desc[:60])
+                    logger.info("Image filtered (relevance): %s", img_path)
+                    continue
+                if mentioned_images and img_path not in mentioned_images:
+                    logger.info("Image filtered (not mentioned): %s", img_path)
                     continue
 
                 h = hashlib.md5(full.read_bytes()).hexdigest()
