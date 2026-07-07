@@ -229,8 +229,12 @@ class RagEngine:
                 k=self.cfg.top_k,
             )
             max_score = scored[0][1] if scored else 0.0
+            best_page = scored[0][0].metadata.get("page_number") if scored else None
+            best_file = scored[0][0].metadata.get("source_file") if scored else None
         except Exception:
             max_score = 0.0
+            best_page = None
+            best_file = None
 
         if max_score < self.cfg.relevance_threshold:
             return RagAnswer(
@@ -265,16 +269,6 @@ class RagEngine:
             filtered = [s for s in sources if s.page_number in cited_pages]
             if filtered:
                 sources = filtered
-
-        try:
-            scored_docs = self.vectorstore.similarity_search_with_relevance_scores(
-                question, k=self.cfg.top_k,
-            )
-            best_page = scored_docs[0][0].metadata.get("page_number") if scored_docs else None
-            best_file = scored_docs[0][0].metadata.get("source_file") if scored_docs else None
-        except Exception:
-            best_page = None
-            best_file = None
 
         for src in sources:
             if best_file and best_page:
