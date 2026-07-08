@@ -92,6 +92,34 @@ def _clean_pdf_text(text: str) -> str:
     return text.strip()
 
 
+class SimpleExcelLoader:
+    """Лёгкий загрузчик Excel на openpyxl (без зависимости от unstructured)."""
+
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+
+    def load(self) -> list[Document]:
+        from openpyxl import load_workbook
+
+        wb = load_workbook(self.file_path, read_only=True, data_only=True)
+        docs: list[Document] = []
+        try:
+            for sheet in wb.sheetnames:
+                ws = wb[sheet]
+                rows: list[str] = []
+                for row in ws.iter_rows(values_only=True):
+                    cells = ["" if c is None else str(c) for c in row]
+                    line = "\t".join(cells).strip()
+                    if line:
+                        rows.append(line)
+                text = "\n".join(rows)
+                if text.strip():
+                    docs.append(Document(page_content=text, metadata={"sheet": sheet}))
+        finally:
+            wb.close()
+        return docs
+
+
 def _loader_for(path: Path):
     suffix = path.suffix.lower()
     if suffix == ".pdf":
@@ -101,7 +129,7 @@ def _loader_for(path: Path):
     if suffix in {".txt", ".md"}:
         return TextLoader(str(path), encoding="utf-8")
     if suffix in {".xlsx", ".xls"}:
-        return UnstructuredExcelLoader(str(path), mode="elements")
+        return SimpleExcelLoader(str(path))
     if suffix == ".csv":
         return CSVLoader(str(path), encoding="utf-8")
     if suffix == ".pptx":
@@ -439,12 +467,8 @@ def build_vectorstore(
 
     if recreate:
         import chromadb
-        from chromadb.config import Settings as ChromaSettings
 
-        client = chromadb.PersistentClient(
-            path=persist_dir,
-            settings=ChromaSettings(anonymized_telemetry=False),
-        )
+        client = chromadb.PersistentClient(path=persist_dir)
         try:
             client.delete_collection(cfg.collection_name)
         except Exception:

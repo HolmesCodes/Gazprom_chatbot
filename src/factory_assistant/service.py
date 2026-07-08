@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading
 from pathlib import Path
 
 from factory_assistant.admin import get_index_status, list_document_files, list_ollama_models, preview_index_plan
@@ -8,6 +10,23 @@ from factory_assistant.config import Settings, settings
 from factory_assistant.documents import delete_document, save_upload
 from factory_assistant.ingest import CATEGORY_KEYWORDS, build_vectorstore, ingest_documents
 from factory_assistant.rag import RagEngine
+
+logger = logging.getLogger(__name__)
+
+# Карта поле конфига -> переменная окружения для сохранения в .env
+_ENV_MAP = {
+    "llm_provider": "LLM_PROVIDER",
+    "llm_api_base_url": "LLM_API_BASE_URL",
+    "llm_api_key": "LLM_API_KEY",
+    "llm_model": "LLM_MODEL",
+    "embedding_model": "EMBEDDING_MODEL",
+    "whisper_model": "WHISPER_MODEL",
+    "chunk_size": "CHUNK_SIZE",
+    "chunk_overlap": "CHUNK_OVERLAP",
+    "top_k": "TOP_K",
+    "fetch_k": "FETCH_K",
+    "relevance_threshold": "RELEVANCE_THRESHOLD",
+}
 
 CATEGORY_LABELS: dict[str, str] = {
     "tech_cards": "Технические карты",
@@ -25,6 +44,9 @@ class FactoryAssistantService:
     def __init__(self, cfg: Settings | None = None):
         self.cfg = cfg or settings
         self.rag = RagEngine(self.cfg)
+        self._reindex_running = False
+        self._reindex_last: dict | None = None
+        self._reindex_thread: threading.Thread | None = None
 
     def get_config(self) -> dict:
         return {
@@ -41,25 +63,33 @@ class FactoryAssistantService:
             "relevance_threshold": self.cfg.relevance_threshold,
             "documents_dir": str(self.cfg.documents_dir.resolve()),
             "chroma_dir": str(self.cfg.chroma_dir.resolve()),
+            "reindex_running": self._reindex_running,
+            "reindex_last": self._reindex_last,
         }
 
     def update_config(self, payload: dict) -> dict:
+        changed: dict = {}
         provider_changed = False
         if "llm_provider" in payload and payload["llm_provider"]:
             self.cfg.llm_provider = payload["llm_provider"]
+            changed["llm_provider"] = payload["llm_provider"]
             provider_changed = True
 
         if "llm_api_base_url" in payload:
             self.cfg.llm_api_base_url = (payload["llm_api_base_url"] or "").strip().rstrip("/")
+            changed["llm_api_base_url"] = self.cfg.llm_api_base_url
 
         if "llm_api_key" in payload:
             self.cfg.llm_api_key = payload["llm_api_key"]
+            changed["llm_api_key"] = "***" if payload["llm_api_key"] else ""
 
         if "whisper_model" in payload and payload["whisper_model"]:
             self.cfg.whisper_model = payload["whisper_model"]
+            changed["whisper_model"] = payload["whisper_model"]
 
         if "llm_model" in payload and payload["llm_model"]:
             self.cfg.llm_model = payload["llm_model"]
+            changed["llm_model"] = payload["llm_model"]
             if provider_changed:
                 self.rag.update_provider(
                     self.cfg.llm_provider,
@@ -69,12 +99,19 @@ class FactoryAssistantService:
             else:
                 self.rag.update_llm_model(payload["llm_model"])
 
+        embedding_changed = False
         if "embedding_model" in payload and payload["embedding_model"]:
             self.cfg.embedding_model = payload["embedding_model"]
+            changed["embedding_model"] = payload["embedding_model"]
+            embedding_changed = True
 
+        chunking_changed = False
         for field in ("chunk_size", "chunk_overlap", "top_k", "fetch_k", "relevance_threshold"):
             if field in payload and payload[field] is not None:
                 setattr(self.cfg, field, payload[field])
+                changed[field] = payload[field]
+                if field in ("chunk_size", "chunk_overlap"):
+                    chunking_changed = True
 
         if self.rag.vectorstore is not None:
             self.rag.update_retrieval_settings(
@@ -82,7 +119,95 @@ class FactoryAssistantService:
                 fetch_k=payload.get("fetch_k"),
                 relevance_threshold=payload.get("relevance_threshold"),
             )
-        return self.get_config()
+
+        # Смена модели эмбеддинга или параметров чанкирования требует
+        # переиндексации: старые векторы/чанки несовместимы с новыми.
+        needs_reindex = embedding_changed or chunking_changed
+        reindex_triggered = False
+        if needs_reindex:
+            reindex_triggered = self._start_reindex()
+
+        # Сохраняем изменения в .env, чтобы пережили перезапуск сервера.
+        self._persist_env(changed)
+
+        result = self.get_config()
+        result["changed"] = changed
+        result["reindex_triggered"] = reindex_triggered
+        if needs_reindex and not reindex_triggered:
+            result["reindex_error"] = "Не удалось запустить переиндексацию (уже выполняется или ошибка)."
+        return result
+
+    def _start_reindex(self) -> bool:
+        if self._reindex_running:
+            return False
+        self._reindex_running = True
+
+        def _run():
+            try:
+                logger.info("Переиндексация запущена из панели настроек")
+                res = self.reindex(recreate=True)
+                self._reindex_last = {
+                    "ok": True,
+                    "documents": res.get("documents"),
+                    "chunks": res.get("chunks"),
+                    "error": res.get("error"),
+                }
+                logger.info("Переиндексация завершена: %s", self._reindex_last)
+            except Exception as exc:  # noqa: BLE001
+                self._reindex_last = {"ok": False, "error": str(exc)}
+                logger.exception("Ошибка переиндексации из панели настроек")
+            finally:
+                self._reindex_running = False
+
+        self._reindex_thread = threading.Thread(target=_run, daemon=True)
+        self._reindex_thread.start()
+        return True
+
+    def _persist_env(self, changed: dict) -> None:
+        if not changed:
+            return
+        env_path = Path(".env")
+        if not env_path.exists():
+            env_path = self.cfg.documents_dir.parent / ".env"
+        if not env_path.exists():
+            try:
+                env_path.write_text("", encoding="utf-8")
+            except Exception:
+                return
+        try:
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+        except Exception:
+            return
+
+        seen = set()
+        new_lines: list[str] = []
+        for line in lines:
+            key = line.split("=", 1)[0].strip()
+            mapped = None
+            for cfg_key, env_key in _ENV_MAP.items():
+                if env_key == key:
+                    mapped = cfg_key
+                    break
+            if mapped in changed:
+                value = changed[mapped]
+                if mapped == "llm_api_key" and value == "***":
+                    new_lines.append(line)  # не перезаписываем секрет пустышкой/звёздочками
+                else:
+                    new_lines.append(f"{key}={value}")
+                seen.add(mapped)
+            else:
+                new_lines.append(line)
+
+        for cfg_key, env_key in _ENV_MAP.items():
+            if cfg_key in changed and cfg_key not in seen:
+                value = changed[cfg_key]
+                if not (cfg_key == "llm_api_key" and value == "***"):
+                    new_lines.append(f"{env_key}={value}")
+
+        try:
+            env_path.write_text("\n".join(new_lines).rstrip() + "\n", encoding="utf-8")
+        except Exception as exc:
+            logger.warning("Не удалось сохранить .env: %s", exc)
 
     def list_models(self) -> list[dict]:
         return list_ollama_models(self.cfg.ollama_base_url)
@@ -209,16 +334,32 @@ class FactoryAssistantService:
             result["reindex"] = self.reindex(recreate=True)
         return result
 
+    def _wipe_vectorstore(self) -> None:
+        chroma_dir = self.cfg.chroma_dir.resolve()
+        # Chroma кэширует клиента как singleton по пути. Чтобы пересоздать БД
+        # с другой моделью эмбеддинга, сбрасываем кэш и удаляем коллекцию.
+        # Важно: создаём клиента с настройками по умолчанию (как делает
+        # langchain.Chroma), иначе конструктор ругается на «different settings».
+        try:
+            from chromadb.api.shared_system_client import SharedSystemClient
+
+            SharedSystemClient.clear_system_cache()
+        except Exception:
+            pass
+        try:
+            import chromadb
+
+            client = chromadb.PersistentClient(path=str(chroma_dir))
+            client.delete_collection(self.cfg.collection_name)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Не удалось удалить коллекцию Chroma: %s", exc)
+
     def reindex(self, recreate: bool = True) -> dict:
-        if recreate and self.rag.vectorstore is not None:
-            try:
-                existing = self.rag.vectorstore
-                collection = existing._collection
-                ids = collection.get(include=[])["ids"]
-                if ids:
-                    collection.delete(ids=ids)
-            except Exception:
-                pass
+        # При смене модели эмбеддинга/параметров старые векторы несовместимы.
+        # Нужно полностью сбросить Chroma: иначе singleton-клиент на том же пути
+        # не даст пересоздать коллекцию с другими настройками эмбеддинга.
+        if recreate:
+            self._wipe_vectorstore()
             self.rag.vectorstore = None
             self.rag.retriever = None
             self.rag.chain = None

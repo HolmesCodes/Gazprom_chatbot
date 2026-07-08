@@ -364,6 +364,7 @@
             <label>relevance_threshold <input id="cfg-threshold" type="number" min="0" max="1" step="0.01"></label>
           </div>
           <button class="admin-btn" id="apply-rag">Сохранить параметры</button>
+          <p id="rag-status" class="hint"></p>
           <p class="hint">После смены chunk_size/overlap или embedding нужна переиндексация.</p>
         </div>
       </div>
@@ -425,6 +426,7 @@
   </div>
 </div>
 
+<script src="/static/vendor/pdfjs/pdf.min.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

@@ -165,7 +165,12 @@ def media(filepath: str) -> FileResponse:
         raise HTTPException(status_code=403, detail="Доступ запрещён")
     if not full_path.exists() or not full_path.is_file():
         raise HTTPException(status_code=404, detail="Файл не найден")
-    return FileResponse(str(full_path))
+    return FileResponse(
+        str(full_path),
+        media_type="application/pdf" if full_path.suffix.lower() == ".pdf" else None,
+        content_disposition_type="inline",
+        filename=full_path.name,
+    )
 
 
 IMAGES_DIR = DATA_DIR / "images"

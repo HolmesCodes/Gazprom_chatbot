@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -57,6 +58,9 @@ class RagAnswer:
     sources: list[SourceReference] = field(default_factory=list)
     found_in_kb: bool = True
     image_descriptions: dict[str, str] = field(default_factory=dict)
+    retrieval_ms: int | None = None
+    generation_ms: int | None = None
+    total_ms: int | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -65,6 +69,9 @@ class RagAnswer:
             "sources": [s.as_dict() for s in self.sources],
             "found_in_kb": self.found_in_kb,
             "image_descriptions": self.image_descriptions,
+            "retrieval_ms": self.retrieval_ms,
+            "generation_ms": self.generation_ms,
+            "total_ms": self.total_ms,
         }
 
 
@@ -72,7 +79,9 @@ def _extract_image_descriptions(docs: list[Document]) -> dict[str, str]:
     descriptions = {}
     for doc in docs:
         text = doc.page_content
-        for m in re.finditer(r"(image_?\d+\.png|p\d+_img\d+_[a-f0-9]+\.png):\s*(.+)", text):
+        for m in re.finditer(
+            r"((?:image_\d+|p\d+_img\d+_[a-f0-9]+)\.(?:png|jpe?g)):\s*(.+)", text
+        ):
             img_name = m.group(1)
             desc = m.group(2).strip()
             if img_name not in descriptions:
@@ -205,6 +214,7 @@ class RagEngine:
 
     def ask(self, question: str) -> RagAnswer:
         question = question.strip()
+        t_start = time.perf_counter()
         if not question:
             return RagAnswer(
                 question=question,
@@ -259,7 +269,13 @@ class RagEngine:
         prompt_msg = self.prompt.invoke(
             {"context": context, "question": question}
         )
+        t_pre_llm = time.perf_counter()
         answer = self.llm.invoke(prompt_msg).content
+        t_post_llm = time.perf_counter()
+
+        retrieval_ms = int(round((t_pre_llm - t_start) * 1000))
+        generation_ms = int(round((t_post_llm - t_pre_llm) * 1000))
+        total_ms = int(round((t_post_llm - t_start) * 1000))
 
         if NOT_FOUND_ANSWER.lower() in answer.lower():
             return RagAnswer(
@@ -267,6 +283,9 @@ class RagEngine:
                 answer=NOT_FOUND_ANSWER,
                 sources=[],
                 found_in_kb=False,
+                retrieval_ms=retrieval_ms,
+                generation_ms=generation_ms,
+                total_ms=total_ms,
             )
 
         cited_pages: set[int] = set()
@@ -278,53 +297,60 @@ class RagEngine:
             if filtered:
                 sources = filtered
 
-        for src in sources:
-            if best_file and best_page:
-                if src.source_file != best_file or src.page_number != best_page:
-                    src.image_paths = []
-
         mentioned_images: set[str] = set()
-        for m in re.finditer(r"(p\d+_img\d+_[a-f0-9]+\.png|image_\d+\.png)", answer):
+        for m in re.finditer(
+            r"((?:image_\d+|p\d+_img\d+_[a-f0-9]+)\.(?:png|jpe?g))", answer
+        ):
             mentioned_images.add(m.group(1))
 
+        cited_pages_int = set(
+            int(m.group(1)) for m in re.finditer(r"стр\.?\s*(\d+)", answer)
+        )
         cited_files = {s.source_file for s in sources}
-        cited_pages_int = set(int(m.group(1)) for m in re.finditer(r"стр\.?\s*(\d+)", answer))
 
-        image_sources = [
-            format_source(doc) for doc in docs
-            if doc.metadata.get("source_file") in cited_files
-            and doc.metadata.get("page_number") in cited_pages_int
-        ]
-        if not image_sources and best_file and best_page:
-            image_sources = [
-                format_source(doc) for doc in docs
-                if doc.metadata.get("source_file") == best_file
-                and doc.metadata.get("page_number") == best_page
+        # Кандидаты на показ: если LLM явно назвал картинки в ответе — берём их
+        # по всем найденным документам; иначе ограничиваемся процитированной
+        # страницей (или страницей с наиболее релевантным фрагментом).
+        if mentioned_images:
+            candidate_docs = docs
+        else:
+            candidate_docs = [
+                doc for doc in docs
+                if doc.metadata.get("source_file") in cited_files
+                and doc.metadata.get("page_number") in cited_pages_int
             ]
+            if not candidate_docs and best_file and best_page:
+                candidate_docs = [
+                    doc for doc in docs
+                    if doc.metadata.get("source_file") == best_file
+                    and doc.metadata.get("page_number") == best_page
+                ]
+
+        # Очищаем image-поля у всех источников — показываем только отобранные.
+        for src in sources:
+            src.image_paths = []
+            src.image_descriptions = {}
 
         seen_hashes: dict[str, str] = {}
         min_size = 3000
 
-        merged_images: dict[tuple[str, int | None], dict[str, list[str]]] = {}
-        for src in image_sources:
-            key = (src.source_file, src.page_number)
-            if key not in merged_images:
-                merged_images[key] = {"paths": [], "descs": {}}
-            merged_images[key]["paths"].extend(src.image_paths)
-            merged_images[key]["descs"].update(src.image_descriptions)
+        merged_images: dict[tuple[str, int | None], list[str]] = {}
+        for doc in candidate_docs:
+            src_file = doc.metadata.get("source_file", "unknown")
+            src_page = doc.metadata.get("page_number")
+            image_paths = doc.metadata.get("image_paths", [])
+            if isinstance(image_paths, str):
+                image_paths = [image_paths]
+            key = (src_file, src_page)
+            merged_images.setdefault(key, [])
+            merged_images[key].extend(image_paths)
 
-        for (src_file, src_page), img_data in merged_images.items():
+        for (src_file, src_page), image_paths in merged_images.items():
             unique: list[str] = []
-            for img_path in img_data["paths"]:
-                full = (
-                    Path("data/images")
-                    / Path(src_file).stem
-                    / img_path
-                )
+            for img_path in image_paths:
+                full = Path("data/images") / Path(src_file).stem / img_path
                 exists, size = _check_image(full)
-                if not exists:
-                    continue
-                if size < min_size:
+                if not exists or size < min_size:
                     continue
 
                 desc = all_image_descriptions.get(img_path, "")
@@ -335,7 +361,10 @@ class RagEngine:
                     logger.info("Image filtered (not mentioned): %s", img_path)
                     continue
 
-                h = hashlib.md5(full.read_bytes()).hexdigest()
+                try:
+                    h = hashlib.md5(full.read_bytes()).hexdigest()
+                except Exception:
+                    h = img_path
                 if h in seen_hashes:
                     continue
                 seen_hashes[h] = img_path
@@ -373,6 +402,9 @@ class RagEngine:
             sources=sources,
             found_in_kb=True,
             image_descriptions=flat_descriptions,
+            retrieval_ms=retrieval_ms,
+            generation_ms=generation_ms,
+            total_ms=total_ms,
         )
 
     def reload_vectorstore(self) -> bool:

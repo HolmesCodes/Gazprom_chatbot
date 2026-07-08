@@ -118,7 +118,7 @@ function toggleWelcome() {
   welcome.style.display = hasMessages ? "none" : "flex";
 }
 
-function appendMessage(role, text, images) {
+function appendMessage(role, text, images, stats, sources) {
   const el = document.createElement("div");
   el.className = `msg ${role}`;
   if (role === "bot") {
@@ -184,6 +184,33 @@ function appendMessage(role, text, images) {
     }
   } else {
     el.textContent = text;
+  }
+  if (sources && sources.length) {
+    const srcWrap = document.createElement("div");
+    srcWrap.className = "msg-sources";
+    const head = document.createElement("div");
+    head.className = "msg-sources-head";
+    head.textContent = "Источники";
+    srcWrap.appendChild(head);
+    sources.forEach((s) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "msg-source-chip";
+      chip.textContent = `${s.source_file}${s.page_number ? ` · стр. ${s.page_number}` : ""}`;
+      chip.title = s.excerpt || "";
+      chip.addEventListener("click", () => openSourcePreview(s.source_file, s.chunk_id, s.page_number));
+      srcWrap.appendChild(chip);
+    });
+    el.appendChild(srcWrap);
+  }
+  if (stats && (stats.retrieval_ms != null || stats.generation_ms != null)) {
+    const statEl = document.createElement("div");
+    statEl.className = "msg-stats";
+    const r = stats.retrieval_ms != null ? (stats.retrieval_ms / 1000).toFixed(2) : "—";
+    const g = stats.generation_ms != null ? (stats.generation_ms / 1000).toFixed(2) : "—";
+    const t = stats.total_ms != null ? (stats.total_ms / 1000).toFixed(2) : "—";
+    statEl.textContent = `⏱ RAG-поиск: ${r}с · генерация ИИ: ${g}с · всего: ${t}с`;
+    el.appendChild(statEl);
   }
   const chatLog = document.getElementById("chat-log");
   chatLog.appendChild(el);
@@ -264,6 +291,13 @@ async function submitQuestion(question) {
     });
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     hideTyping();
+    state.currentSources = result.sources;
+    appendMessage("bot", result.answer, extractImages(result.sources, result.image_descriptions), {
+      retrieval_ms: result.retrieval_ms,
+      generation_ms: result.generation_ms,
+      total_ms: result.total_ms,
+    }, result.sources);
+    renderSources(result.sources);
     const srcCount = result.sources ? result.sources.length : 0;
     const imgCount = result.image_descriptions ? Object.keys(result.image_descriptions).length : 0;
     const parts = [];
@@ -271,9 +305,6 @@ async function submitQuestion(question) {
     if (imgCount) parts.push(`${imgCount} ${declension(imgCount, "изображение", "изображения", "изображений")}`);
     updateStatus(`✅ Найдено: ${parts.join(" · ")} — ${elapsed}с`);
     hideStatus(4000);
-    appendMessage("bot", result.answer, extractImages(result.sources, result.image_descriptions));
-    state.currentSources = result.sources;
-    renderSources(result.sources);
     if (result.llm_model) {
       document.getElementById("chat-model-badge").textContent = `модель: ${result.llm_model}`;
     }
@@ -356,11 +387,15 @@ function renderSources(sources) {
     title.className = "source-title";
     title.textContent = `${src.source_file}${src.page_number ? ` · стр. ${src.page_number}` : ""}`;
     const excerpt = document.createElement("div");
-    excerpt.className = "source-excerpt";
+    excerpt.className = "source-excerpt is-interactive";
     excerpt.textContent = src.excerpt || "";
+    excerpt.dataset.filename = src.source_file;
+    excerpt.dataset.chunkId = src.chunk_id != null ? src.chunk_id : "";
+    excerpt.addEventListener("mouseenter", showOriginalTooltip);
+    excerpt.addEventListener("mouseleave", hideOriginalTooltip);
     block.appendChild(title);
     block.appendChild(excerpt);
-    block.addEventListener("click", () => openSourcePreview(src.source_file, src.chunk_id));
+    block.addEventListener("click", () => openSourcePreview(src.source_file, src.chunk_id, src.page_number));
     list.appendChild(block);
   });
 }
@@ -423,7 +458,7 @@ function renderGroupedResults(categories, labels) {
 
 // ── Preview modal ──
 
-async function openSourcePreview(filename, chunkId) {
+async function openSourcePreview(filename, chunkId, pageNumber) {
   const modal = document.getElementById("preview-modal");
   const title = document.getElementById("preview-title");
   const body = document.getElementById("preview-body");
@@ -434,8 +469,20 @@ async function openSourcePreview(filename, chunkId) {
   modal.classList.remove("hidden");
   const ext = filename.split(".").pop().toLowerCase();
   const isImage = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+  const enc = encodeURIComponent(filename);
+  if (ext === "pdf") {
+    let page = pageNumber;
+    if ((page == null) && chunkId != null) {
+      try {
+        const d = await api(`/api/documents/${enc}/preview?chunk_id=${chunkId}`);
+        page = d.metadata && d.metadata.page_number;
+      } catch (_) { /* ignore */ }
+    }
+    await renderPdfViewer(body, `/api/media/documents/${enc}`, page, filename);
+    return;
+  }
   if (isImage) {
-    body.innerHTML = `<img src="/api/media/documents/${encodeURIComponent(filename)}" class="preview-body-image" alt="${filename}">`;
+    body.innerHTML = `<img src="/api/media/documents/${enc}" class="preview-body-image" alt="${filename}">`;
     return;
   }
   try {
@@ -455,10 +502,113 @@ async function openSourcePreview(filename, chunkId) {
   }
 }
 
+async function renderPdfViewer(container, url, targetPage, filename) {
+  if (!window.pdfjsLib) {
+    container.innerHTML = `<div class="sources-empty">PDF.js не загружен</div>`;
+    return;
+  }
+  container.innerHTML = `
+    <div class="pdf-viewer">
+      <div class="pdf-toolbar">
+        <button type="button" id="pdf-prev" class="pdf-nav">‹</button>
+        <span id="pdf-pageinfo" class="pdf-pageinfo">Загрузка…</span>
+        <button type="button" id="pdf-next" class="pdf-nav">›</button>
+        <span class="pdf-filename" title="${escapeHtml(filename || "")}">${escapeHtml(filename || "")}</span>
+      </div>
+      <div class="pdf-canvas-wrap"><canvas id="pdf-canvas"></canvas></div>
+    </div>`;
+
+  const pdfjsLib = window.pdfjsLib;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/vendor/pdfjs/pdf.worker.min.js";
+
+  let pdf = null;
+  let pageNum = targetPage && targetPage > 0 ? targetPage : 1;
+
+  const canvas = document.getElementById("pdf-canvas");
+  const ctx = canvas.getContext("2d");
+  const pageinfo = document.getElementById("pdf-pageinfo");
+
+  async function renderPage(n) {
+    const page = await pdf.getPage(n);
+    const viewport = page.getViewport({ scale: 1.6 });
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    pageinfo.textContent = `стр. ${n} / ${pdf.numPages}`;
+    pageNum = n;
+  }
+
+  try {
+    const resp = await fetch(url, { headers: authHeaders() });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const buf = await resp.arrayBuffer();
+    pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    if (pageNum > pdf.numPages) pageNum = pdf.numPages;
+    await renderPage(pageNum);
+
+    document.getElementById("pdf-prev").addEventListener("click", () => {
+      if (pageNum > 1) renderPage(pageNum - 1);
+    });
+    document.getElementById("pdf-next").addEventListener("click", () => {
+      if (pageNum < pdf.numPages) renderPage(pageNum + 1);
+    });
+  } catch (err) {
+    container.innerHTML = `<div class="sources-empty">Ошибка отображения PDF: ${err.message}</div>`;
+  }
+}
+
 function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
+}
+
+let originalTooltipEl = null;
+
+function showOriginalTooltip(e) {
+  const el = e.currentTarget;
+  let text = el.dataset.full;
+  if (!text) {
+    const enc = encodeURIComponent(el.dataset.filename);
+    const cid = el.dataset.chunkId;
+    const url = cid
+      ? `/api/documents/${enc}/preview?chunk_id=${cid}`
+      : `/api/documents/${enc}/preview`;
+    api(url)
+      .then((data) => {
+        text = data.content || data.preview || "(нет текста)";
+        el.dataset.full = text;
+        renderOriginalTooltip(el, text);
+      })
+      .catch(() => renderOriginalTooltip(el, "(не удалось загрузить оригинальный текст)"));
+  } else {
+    renderOriginalTooltip(el, text);
+  }
+}
+
+function renderOriginalTooltip(el, text) {
+  if (!originalTooltipEl) {
+    originalTooltipEl = document.createElement("div");
+    originalTooltipEl.id = "original-tooltip";
+    originalTooltipEl.className = "original-tooltip hidden";
+    document.body.appendChild(originalTooltipEl);
+  }
+  originalTooltipEl.textContent = text;
+  originalTooltipEl.classList.remove("hidden");
+  const rect = el.getBoundingClientRect();
+  const tipRect = originalTooltipEl.getBoundingClientRect();
+  let top = rect.top - tipRect.height - 8;
+  if (top < 8) top = rect.bottom + 8;
+  let left = rect.left;
+  if (left + tipRect.width > window.innerWidth - 8) {
+    left = window.innerWidth - tipRect.width - 8;
+  }
+  originalTooltipEl.style.top = `${top}px`;
+  originalTooltipEl.style.left = `${Math.max(8, left)}px`;
+}
+
+function hideOriginalTooltip() {
+  if (originalTooltipEl) originalTooltipEl.classList.add("hidden");
 }
 
 function openLightbox(src) {
@@ -1079,12 +1229,18 @@ document.getElementById("apply-models").addEventListener("click", async () => {
       }),
     });
     fillConfigForm(config);
-    document.getElementById("models-status").textContent = "Модели применены.";
+    if (config.reindex_triggered) {
+      document.getElementById("models-status").textContent =
+        "Модели применены. Запущена переиндексация (смена эмбеддинга) — может занять время, следите за статусом индекса.";
+    } else {
+      document.getElementById("models-status").textContent = "Модели применены.";
+    }
   } catch (err) { alert(err.message); }
 });
 
 // Apply RAG
 document.getElementById("apply-rag").addEventListener("click", async () => {
+  const status = document.getElementById("rag-status");
   try {
     const config = await api("/api/admin/config", {
       method: "PATCH",
@@ -1097,7 +1253,12 @@ document.getElementById("apply-rag").addEventListener("click", async () => {
       }),
     });
     fillConfigForm(config);
-    alert("Параметры RAG сохранены");
+    if (config.reindex_triggered) {
+      status.textContent =
+        "Параметры сохранены. Запущена переиндексация (смена размера чанка) — может занять время.";
+    } else {
+      status.textContent = "Параметры RAG сохранены (применяются сразу).";
+    }
   } catch (err) { alert(err.message); }
 });
 
