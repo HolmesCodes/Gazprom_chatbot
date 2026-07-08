@@ -185,24 +185,7 @@ function appendMessage(role, text, images, stats, sources) {
   } else {
     el.textContent = text;
   }
-  if (sources && sources.length) {
-    const srcWrap = document.createElement("div");
-    srcWrap.className = "msg-sources";
-    const head = document.createElement("div");
-    head.className = "msg-sources-head";
-    head.textContent = "Источники";
-    srcWrap.appendChild(head);
-    sources.forEach((s) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "msg-source-chip";
-      chip.textContent = `${s.source_file}${s.page_number ? ` · стр. ${s.page_number}` : ""}`;
-      chip.title = s.excerpt || "";
-      chip.addEventListener("click", () => openSourcePreview(s.source_file, s.chunk_id, s.page_number));
-      srcWrap.appendChild(chip);
-    });
-    el.appendChild(srcWrap);
-  }
+  // sources are shown in the right panel, not inline
   if (stats && (stats.retrieval_ms != null || stats.generation_ms != null)) {
     const statEl = document.createElement("div");
     statEl.className = "msg-stats";
@@ -265,7 +248,7 @@ function hideStatus(delay = 2000) {
 function clearChat() {
   document.getElementById("chat-log").querySelectorAll(".msg, .typing-indicator").forEach((el) => el.remove());
   state.currentSources = [];
-  restoreSourcesView();
+  document.getElementById("answer-sources-list").innerHTML = '<div class="sources-empty">Задайте вопрос, чтобы увидеть источники</div>';
   toggleWelcome();
 }
 
@@ -297,7 +280,7 @@ async function submitQuestion(question) {
       generation_ms: result.generation_ms,
       total_ms: result.total_ms,
     }, result.sources);
-    renderSources(result.sources);
+    renderAnswerSources(result.sources);
     const srcCount = result.sources ? result.sources.length : 0;
     const imgCount = result.image_descriptions ? Object.keys(result.image_descriptions).length : 0;
     const parts = [];
@@ -373,6 +356,35 @@ function extractImages(sources, imageDescriptions) {
 function renderSources(sources) {
   state.sourcesMode = "sources";
   const list = document.getElementById("sources-list");
+  list.innerHTML = "";
+  if (!sources || !sources.length) {
+    list.innerHTML = '<div class="sources-empty">Источники не найдены</div>';
+    return;
+  }
+  sources.forEach((src) => {
+    const block = document.createElement("div");
+    block.className = "source-item";
+    block.dataset.filename = src.source_file;
+    block.dataset.chunkId = src.chunk_id != null ? src.chunk_id : "";
+    const title = document.createElement("div");
+    title.className = "source-title";
+    title.textContent = `${src.source_file}${src.page_number ? ` · стр. ${src.page_number}` : ""}`;
+    const excerpt = document.createElement("div");
+    excerpt.className = "source-excerpt is-interactive";
+    excerpt.textContent = src.excerpt || "";
+    excerpt.dataset.filename = src.source_file;
+    excerpt.dataset.chunkId = src.chunk_id != null ? src.chunk_id : "";
+    excerpt.addEventListener("mouseenter", showOriginalTooltip);
+    excerpt.addEventListener("mouseleave", hideOriginalTooltip);
+    block.appendChild(title);
+    block.appendChild(excerpt);
+    block.addEventListener("click", () => openSourcePreview(src.source_file, src.chunk_id, src.page_number));
+    list.appendChild(block);
+  });
+}
+
+function renderAnswerSources(sources) {
+  const list = document.getElementById("answer-sources-list");
   list.innerHTML = "";
   if (!sources || !sources.length) {
     list.innerHTML = '<div class="sources-empty">Источники не найдены</div>';

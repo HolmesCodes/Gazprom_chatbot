@@ -149,6 +149,19 @@
     <div id="sources-list" class="sources-list">
       <div class="sources-empty">Выберите категорию или задайте вопрос</div>
     </div>
+    <div class="commands-grid-left">
+      <button class="cmd-btn" data-cmd="/start">/start</button>
+      <button class="cmd-btn" data-cmd="/onboard">/onboard</button>
+      <button class="cmd-btn" data-cmd="/back">/back</button>
+      <button class="cmd-btn" data-cmd="/by_type">/by_type</button>
+      <button class="cmd-btn" data-cmd="/search">/search</button>
+      <button class="cmd-btn" data-cmd="/by_date">/by_date</button>
+      <button class="cmd-btn" data-cmd="/recent">/recent</button>
+      <button class="cmd-btn" data-cmd="/help">/help</button>
+    </div>
+    <button class="new-chat-btn" id="new-chat-btn">
+      <span>＋</span> Новый чат
+    </button>
     <div id="search-bar" class="search-bar hidden">
       <input type="text" id="search-input" placeholder="Поиск документов..." autocomplete="off">
       <button id="search-go">Найти</button>
@@ -231,27 +244,14 @@
     </div>
   </main>
 
-  <!-- RIGHT PANEL -->
+  <!-- RIGHT PANEL: SOURCES -->
   <aside class="panel panel-right">
-    <div class="commands-header">
-      <span class="commands-title">Меню команд</span>
+    <div class="panel-left-header">
+      <span class="panel-left-title">Источники ответа</span>
     </div>
-    <div class="commands-grid">
-      <button class="cmd-btn" data-cmd="/start">/start</button>
-      <button class="cmd-btn" data-cmd="/back">/back</button>
-      <button class="cmd-btn" data-cmd="/onboard">/onboard</button>
-      <button class="cmd-btn" data-cmd="/by_type">/by_type</button>
-      <button class="cmd-btn" data-cmd="/help">/help</button>
-      <button class="cmd-btn" data-cmd="/by_date">/by_date</button>
-      <button class="cmd-btn" data-cmd="/search">/search</button>
-      <button class="cmd-btn" data-cmd="/recent">/recent</button>
-      <button class="cmd-btn" data-cmd="/faq">/faq</button>
-      <button class="cmd-btn" data-cmd="/contact">/contact</button>
-
+    <div id="answer-sources-list" class="sources-list">
+      <div class="sources-empty">Задайте вопрос, чтобы увидеть источники</div>
     </div>
-    <button class="new-chat-btn" id="new-chat-btn">
-      <span>＋</span> Новый чат
-    </button>
   </aside>
 
 </div>

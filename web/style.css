@@ -525,9 +525,9 @@ body {
   overflow: hidden;
 }
 
-.panel-left { width: 300px; min-width: 300px; max-height: calc(100vh - 130px); }
+.panel-left { width: 280px; min-width: 280px; max-height: calc(100vh - 130px); }
 .panel-center { flex: 1; min-width: 0; max-height: calc(100vh - 130px); }
-.panel-right { width: 280px; min-width: 280px; max-height: calc(100vh - 130px); }
+.panel-right { width: 320px; min-width: 320px; max-height: calc(100vh - 130px); }
 
 /* ====== LEFT PANEL ====== */
 .panel-left-header {
@@ -783,44 +783,6 @@ body {
   letter-spacing: 0.2px;
 }
 
-.msg-sources {
-  flex-basis: 100%;
-  margin: 10px 0 2px 60px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.msg-sources-head {
-  width: 100%;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--muted-text);
-  margin-bottom: 2px;
-}
-
-.msg-source-chip {
-  background: var(--light);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 12px;
-  font-size: 12px;
-  color: var(--text-dark);
-  cursor: pointer;
-  transition: all 0.15s;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.msg-source-chip:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: #fff;
-}
 .msg-bot p { margin: 0 0 8px; }
 .msg-bot p:last-child { margin-bottom: 0; }
 .msg-bot pre { background: var(--code-bg); color: var(--code-text); padding: 12px; border-radius: 10px; overflow-x: auto; font-size: 13px; }
@@ -1367,6 +1329,21 @@ body {
   padding: 12px;
   flex: 1;
   align-content: start;
+}
+
+.commands-grid-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+.commands-grid-left .cmd-btn {
+  flex: 1 1 auto;
+  min-width: 70px;
+  padding: 6px 8px;
+  font-size: 12px;
+  border-radius: 8px;
 }
 
 .cmd-btn {
@@ -1947,6 +1924,7 @@ body {
   .panel-right { display: none; }
   .panel-left { width: 280px; min-width: 280px; }
   .panel-center { flex: 1; min-width: 0; }
+  .commands-grid-left .cmd-btn { font-size: 11px; padding: 4px 6px; min-width: 60px; }
 }
 
 @media (max-width: 768px) {
