@@ -17,9 +17,9 @@ class Settings(BaseSettings):
     llm_provider: str = "ollama"
     llm_api_base_url: str = ""
     llm_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "google/gemini-2.5-flash-lite"
 
-    whisper_model: str = "large-v3-turbo"
+    whisper_model: str = "gigaam-v3"
 
     documents_dir: Path = Path("data/documents")
     chroma_dir: Path = Path("chroma_db")
@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = 200
     top_k: int = 8
     fetch_k: int = 20
-    relevance_threshold: float = 0.15
+    relevance_threshold: float = 0.10
 
     api_host: str = "127.0.0.1"
     api_port: int = 8000

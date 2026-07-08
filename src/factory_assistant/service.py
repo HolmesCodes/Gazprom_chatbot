@@ -109,7 +109,7 @@ class FactoryAssistantService:
         client = OpenAI(base_url=base_url, api_key=self.cfg.llm_api_key or "sk-placeholder")
         try:
             transcript = client.audio.transcriptions.create(
-                model="whisper-1",
+                model=self.cfg.whisper_model,
                 file=("audio.webm", audio_data, "audio/webm"),
             )
             return transcript.text.strip()

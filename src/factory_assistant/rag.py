@@ -184,10 +184,18 @@ class RagEngine:
     def _retrieve(self, question: str) -> list[Document]:
         if self.vectorstore is None:
             return []
-        try:
-            return self.retriever.invoke(question)
-        except Exception:
-            return []
+        for attempt in range(3):
+            try:
+                return self.retriever.invoke(question)
+            except Exception as exc:
+                if attempt < 2:
+                    logger.warning("Retrieve attempt %d failed: %s. Retrying...", attempt + 1, exc)
+                    import time
+                    time.sleep(1.0 * (attempt + 1))
+                else:
+                    logger.warning("All retrieve attempts failed: %s", exc)
+                    return []
+        return []
 
     def _build_retriever(self, vectorstore: Chroma):
         return vectorstore.as_retriever(
@@ -296,12 +304,21 @@ class RagEngine:
 
         seen_hashes: dict[str, str] = {}
         min_size = 3000
+
+        merged_images: dict[tuple[str, int | None], dict[str, list[str]]] = {}
         for src in image_sources:
+            key = (src.source_file, src.page_number)
+            if key not in merged_images:
+                merged_images[key] = {"paths": [], "descs": {}}
+            merged_images[key]["paths"].extend(src.image_paths)
+            merged_images[key]["descs"].update(src.image_descriptions)
+
+        for (src_file, src_page), img_data in merged_images.items():
             unique: list[str] = []
-            for img_path in src.image_paths:
+            for img_path in img_data["paths"]:
                 full = (
                     Path("data/images")
-                    / Path(src.source_file).stem
+                    / Path(src_file).stem
                     / img_path
                 )
                 exists, size = _check_image(full)
@@ -325,7 +342,7 @@ class RagEngine:
                 unique.append(img_path)
             if unique:
                 existing = next(
-                    (s for s in sources if s.source_file == src.source_file and s.page_number == src.page_number),
+                    (s for s in sources if s.source_file == src_file and s.page_number == src_page),
                     None,
                 )
                 if existing:
@@ -335,12 +352,15 @@ class RagEngine:
                         for img in unique
                     }
                 else:
-                    src.image_paths = unique
-                    src.image_descriptions = {
-                        img: all_image_descriptions.get(img, "")
-                        for img in unique
-                    }
-                    sources.append(src)
+                    sources.append(SourceReference(
+                        source_file=src_file,
+                        page_number=src_page,
+                        image_paths=unique,
+                        image_descriptions={
+                            img: all_image_descriptions.get(img, "")
+                            for img in unique
+                        },
+                    ))
 
         flat_descriptions = {}
         for src in sources:

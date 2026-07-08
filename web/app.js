@@ -209,6 +209,32 @@ function hideTyping() {
   if (el) el.remove();
 }
 
+function showStatus(text) {
+  const bar = document.getElementById("status-bar");
+  const txt = document.getElementById("status-text");
+  if (!bar || !txt) return;
+  txt.textContent = text;
+  bar.classList.remove("hidden", "done");
+}
+
+function updateStatus(text) {
+  const txt = document.getElementById("status-text");
+  if (txt) txt.textContent = text;
+}
+
+function hideStatus(delay = 2000) {
+  const bar = document.getElementById("status-bar");
+  if (!bar) return;
+  bar.classList.add("done");
+  setTimeout(() => {
+    bar.style.animation = "statusFadeOut 0.3s ease forwards";
+    setTimeout(() => {
+      bar.classList.add("hidden");
+      bar.style.animation = "";
+    }, 300);
+  }, delay);
+}
+
 function clearChat() {
   document.getElementById("chat-log").querySelectorAll(".msg, .typing-indicator").forEach((el) => el.remove());
   state.currentSources = [];
@@ -227,12 +253,24 @@ async function submitQuestion(question) {
   appendMessage("user", question);
   saveToHistory(question);
   showTyping();
+  const t0 = Date.now();
+  showStatus("🔍 Ищу релевантные документы...");
   try {
+    await new Promise(r => setTimeout(r, 200));
+    updateStatus("📡 Отправляю запрос в API...");
     const result = await api("/api/ask", {
       method: "POST",
       body: JSON.stringify({ question }),
     });
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     hideTyping();
+    const srcCount = result.sources ? result.sources.length : 0;
+    const imgCount = result.image_descriptions ? Object.keys(result.image_descriptions).length : 0;
+    const parts = [];
+    parts.push(`${srcCount} ${declension(srcCount, "источник", "источника", "источников")}`);
+    if (imgCount) parts.push(`${imgCount} ${declension(imgCount, "изображение", "изображения", "изображений")}`);
+    updateStatus(`✅ Найдено: ${parts.join(" · ")} — ${elapsed}с`);
+    hideStatus(4000);
     appendMessage("bot", result.answer, extractImages(result.sources, result.image_descriptions));
     state.currentSources = result.sources;
     renderSources(result.sources);
@@ -241,8 +279,18 @@ async function submitQuestion(question) {
     }
   } catch (err) {
     hideTyping();
+    hideStatus(1000);
     appendMessage("system", `Ошибка: ${err.message}`);
   }
+}
+
+function declension(n, one, two, five) {
+  const abs = Math.abs(n) % 100;
+  const last = abs % 10;
+  if (abs > 10 && abs < 20) return five;
+  if (last > 1 && last < 5) return two;
+  if (last === 1) return one;
+  return five;
 }
 
 function extractImages(sources, imageDescriptions) {

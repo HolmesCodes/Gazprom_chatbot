@@ -1038,6 +1038,125 @@ body {
   40% { opacity: 1; transform: scale(1); }
 }
 
+/* Status bar */
+.status-bar {
+  background: linear-gradient(135deg, rgba(26,117,185,0.08) 0%, rgba(12,64,122,0.05) 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 13px;
+  color: var(--muted-text);
+  animation: statusSlideIn 0.3s ease;
+  overflow: hidden;
+}
+
+.status-bar.hidden { display: none; }
+
+.status-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: statusSpin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.status-bar.done .status-spinner {
+  border-color: var(--primary);
+  border-top-color: transparent;
+  animation: none;
+  border-width: 2px;
+  border-style: solid;
+  border-top-color: #22c55e;
+}
+
+@keyframes statusSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes statusSlideIn {
+  from { opacity: 0; transform: translateY(-10px); max-height: 0; }
+  to { opacity: 1; transform: translateY(0); max-height: 40px; }
+}
+
+@keyframes statusFadeOut {
+  from { opacity: 1; max-height: 40px; }
+  to { opacity: 0; max-height: 0; padding: 0 16px; }
+}
+
+/* Message appear animation */
+.msg {
+  animation: msgAppear 0.3s ease;
+}
+
+@keyframes msgAppear {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Gallery item hover */
+.msg-gallery-item {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.msg-gallery-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(12, 64, 122, 0.15);
+}
+
+/* Image popup overlay */
+.image-popup-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: popupFadeIn 0.25s ease;
+  cursor: pointer;
+}
+
+.image-popup-overlay img {
+  max-width: 90vw;
+  max-height: 85vh;
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  animation: popupScaleIn 0.3s ease;
+}
+
+.image-popup-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: white;
+  font-size: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.image-popup-close:hover {
+  background: rgba(255,255,255,0.4);
+}
+
+@keyframes popupFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes popupScaleIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
 /* Welcome section */
 .welcome-section {
   display: flex;

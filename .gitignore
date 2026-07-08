@@ -10,5 +10,8 @@ chroma_db/
 data/images/
 data/vision_cache.json
 data/ingest_manifest.json
+data/enriched_cache.json
 data/users.json
 data/ocr_cache/
+.tmp-gazprom-ref/
+tmp/

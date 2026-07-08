@@ -367,6 +367,7 @@ class _SafeEmbeddings:
 
 def _build_api_embeddings(cfg: Settings):
     """Build embeddings using raw OpenAI client (bypasses langchain tokenization)."""
+    import time
     from openai import OpenAI
 
     client = OpenAI(
@@ -379,18 +380,33 @@ def _build_api_embeddings(cfg: Settings):
             self._client = client
             self._model = model
 
+        def _embed_with_retry(self, input_data, max_retries=3):
+            for attempt in range(max_retries):
+                try:
+                    resp = self._client.embeddings.create(model=self._model, input=input_data)
+                    if not resp.data:
+                        raise ValueError("No embedding data received")
+                    return resp.data
+                except (ValueError, Exception) as e:
+                    if attempt < max_retries - 1:
+                        wait = 1.5 ** attempt
+                        logger.warning("Embedding attempt %d failed: %s. Retrying in %.1fs...", attempt + 1, e, wait)
+                        time.sleep(wait)
+                    else:
+                        raise
+
         def embed_documents(self, texts: list[str]) -> list[list[float]]:
             all_embeds = []
             batch_size = 20
             for i in range(0, len(texts), batch_size):
                 batch = texts[i:i + batch_size]
-                resp = self._client.embeddings.create(model=self._model, input=batch)
-                all_embeds.extend([d.embedding for d in resp.data])
+                data = self._embed_with_retry(batch)
+                all_embeds.extend([d.embedding for d in data])
             return all_embeds
 
         def embed_query(self, text: str) -> list[float]:
-            resp = self._client.embeddings.create(model=self._model, input=[text])
-            return resp.data[0].embedding
+            data = self._embed_with_retry([text])
+            return data[0].embedding
 
     return RawEmbeddings(client, cfg.embedding_model)
 
