@@ -1,0 +1,46 @@
+flowchart TD
+    A["Пользователь
+    отправляет вопрос"] --> B["POST /api/ask
+    FactoryAssistantService.ask()"]
+
+    B --> C["MMR-поиск в ChromaDB
+    retriever.invoke(question)
+    top_k=5 из fetch_k=15 кандидатов"]
+
+    C --> D{"Все найденные
+    чанки имеют score < -2.0?"}
+    D -->|"Да — контекст пустой"| Z["Ответ:
+    Информация не найдена
+    в базе знаний"]
+    D -->|"Нет — есть релевантные"| E["Сборка контекста
+    из найденных чанков
+    + описания изображений"]
+
+    E --> F["LLM-генерация
+    ChatOpenAI → Polza.ai
+    deepseek / gemini
+    temperature = 0.0"]
+
+    F --> G{"LLM вернула
+    «Информация не найдена
+    в базе знаний»?"}
+    G -->|"Да"| Z
+    G -->|"Нет"| H["Парсинг источников
+    и релевантных картинок"]
+
+    H --> I["Формирование RagAnswer
+    + answer (Markdown)
+    + sources[]
+    + image_descriptions{}
+    + тайминги (ms)"]
+
+    I --> J["Браузер
+    → ответ в центре
+    → источники справа
+    → картинки в галлерее
+    → тайминги под ответом"]
+
+    style A fill:#e1f5fe
+    style Z fill:#ffcdd2
+    style I fill:#c8e6c9
+    style J fill:#fff9c4

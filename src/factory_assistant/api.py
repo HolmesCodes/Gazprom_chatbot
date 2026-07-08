@@ -60,7 +60,7 @@ class ConfigUpdateRequest(BaseModel):
     chunk_overlap: int | None = Field(default=None, ge=0, le=1000)
     top_k: int | None = Field(default=None, ge=1, le=20)
     fetch_k: int | None = Field(default=None, ge=1, le=100)
-    relevance_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    relevance_threshold: float | None = Field(default=None, ge=-3.0, le=1.0)
 
 
 class AuthLoginRequest(BaseModel):
