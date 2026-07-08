@@ -166,13 +166,13 @@ class RagEngine:
                 model=self.cfg.llm_model,
                 base_url=base_url,
                 api_key=self.cfg.llm_api_key or "sk-placeholder",
-                temperature=0.1,
+                temperature=0.0,
                 max_tokens=2048,
             )
         return ChatOllama(
             model=self.cfg.llm_model,
             base_url=self.cfg.ollama_base_url,
-            temperature=0.1,
+            temperature=0.0,
             num_ctx=8192,
             keep_alive="24h",
         )
@@ -209,7 +209,7 @@ class RagEngine:
     def _build_retriever(self, vectorstore: Chroma):
         return vectorstore.as_retriever(
             search_type="mmr",
-            search_kwargs={"k": self.cfg.top_k, "fetch_k": 20},
+            search_kwargs={"k": self.cfg.top_k, "fetch_k": self.cfg.fetch_k},
         )
 
     def ask(self, question: str) -> RagAnswer:
