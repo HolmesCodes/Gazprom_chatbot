@@ -9,6 +9,7 @@ const state = {
   currentSources: [],
   token: localStorage.getItem("token") || "",
   user: JSON.parse(localStorage.getItem("user") || "null"),
+  onboardingSession: null,
 };
 
 const CATEGORY_LABELS = {
@@ -118,6 +119,58 @@ function toggleWelcome() {
   welcome.style.display = hasMessages ? "none" : "flex";
 }
 
+function linkifySources(html, sources) {
+  if (!sources || !sources.length) return html;
+  const fileMap = new Map();
+  sources.forEach((s) => {
+    if (s.source_file) fileMap.set(s.source_file, s);
+  });
+  let result = html;
+  fileMap.forEach((src, filename) => {
+    const escaped = filename.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const excerpt = (src.excerpt || "").slice(0, 160).replace(/"/g, "&quot;");
+    const re = new RegExp(`\\[(${escaped})\\]`, "g");
+    result = result.replace(re, `<a class="source-link" data-filename="$1" data-chunk="${src.chunk_id ?? ""}" data-page="${src.page_number ?? ""}" data-excerpt="${excerpt}">$1</a>`);
+  });
+  return result;
+}
+
+function showSourceTooltip(e, el) {
+  const tip = document.getElementById("source-tooltip");
+  if (!tip) return;
+  const excerpt = el.dataset.excerpt || "";
+  const page = el.dataset.page;
+  const filename = el.dataset.filename;
+  let html = `<div class="tip-filename">${escapeHtml(filename)}</div>`;
+  if (page) html += `<div class="tip-page">стр. ${page}</div>`;
+  if (excerpt) html += `<div class="tip-excerpt">${escapeHtml(excerpt)}</div>`;
+  tip.innerHTML = html;
+  tip.classList.remove("hidden");
+  positionTooltip(e, tip);
+}
+
+function hideSourceTooltip() {
+  const tip = document.getElementById("source-tooltip");
+  if (tip) tip.classList.add("hidden");
+}
+
+function moveSourceTooltip(e) {
+  const tip = document.getElementById("source-tooltip");
+  if (tip && !tip.classList.contains("hidden")) positionTooltip(e, tip);
+}
+
+function positionTooltip(e, tip) {
+  const pad = 12;
+  let left = e.clientX + pad;
+  let top = e.clientY + pad;
+  const tw = tip.offsetWidth;
+  const th = tip.offsetHeight;
+  if (left + tw > window.innerWidth - 10) left = e.clientX - tw - pad;
+  if (top + th > window.innerHeight - 10) top = e.clientY - th - pad;
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+}
+
 function appendMessage(role, text, images, stats, sources) {
   const el = document.createElement("div");
   el.className = `msg ${role}`;
@@ -137,7 +190,17 @@ function appendMessage(role, text, images, stats, sources) {
     if (typeof marked !== "undefined") {
       const content = document.createElement("div");
       content.className = "msg-content";
-      content.innerHTML = marked.parse(text);
+      content.innerHTML = linkifySources(marked.parse(text), sources);
+      content.querySelectorAll(".source-link").forEach((a) => {
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          const pg = parseInt(a.dataset.page, 10);
+          openSourcePreview(a.dataset.filename, a.dataset.chunk || null, Number.isFinite(pg) ? pg : null);
+        });
+        a.addEventListener("mouseenter", (e) => showSourceTooltip(e, a));
+        a.addEventListener("mouseleave", hideSourceTooltip);
+        a.addEventListener("mousemove", moveSourceTooltip);
+      });
       if (images && images.length) {
         const gallery = document.createElement("div");
         gallery.className = "msg-gallery";
@@ -252,6 +315,101 @@ function clearChat() {
   toggleWelcome();
 }
 
+/* ====== ONBOARDING ====== */
+
+function showOnboardingPanel() {
+  document.getElementById("left-panel-sources").classList.add("hidden");
+  document.getElementById("left-panel-onboarding").classList.remove("hidden");
+}
+
+function hideOnboardingPanel() {
+  document.getElementById("left-panel-sources").classList.remove("hidden");
+  document.getElementById("left-panel-onboarding").classList.add("hidden");
+}
+
+function updateOnboardingPanel(res) {
+  const current = res.current_step || 1;
+  const total = res.total_steps || 9;
+  const pct = Math.round((current / total) * 100);
+
+  document.getElementById("onboarding-step-counter").textContent = `${current}/${total}`;
+  document.getElementById("onboarding-progress-bar").style.width = pct + "%";
+  document.getElementById("onboarding-step-title").textContent = res.title || `Шаг ${current}`;
+  document.getElementById("onboarding-step-text").textContent = res.body || "";
+
+  document.getElementById("onboarding-prev").disabled = current <= 1;
+  document.getElementById("onboarding-next").disabled = current >= total;
+}
+
+async function startOnboarding() {
+  try {
+    const res = await api("/api/onboarding/start", {
+      method: "POST",
+      body: JSON.stringify({ session_id: null }),
+    });
+    state.onboardingSession = res.session_id;
+    state._onboardingTotal = res.total_steps || 9;
+    showOnboardingPanel();
+    updateOnboardingPanel(res);
+    clearChat();
+    appendMessage("bot", res.body || `**${res.title}**\n\n${res.body}`);
+  } catch (err) {
+    console.error("Onboarding start error:", err);
+    clearChat();
+    appendMessage("bot", "Не удалось запустить онбординг. Попробуй позже.");
+  }
+}
+
+function exitOnboarding() {
+  state.onboardingSession = null;
+  state._onboardingTotal = null;
+  hideOnboardingPanel();
+}
+
+async function onboardingNavigate(direction) {
+  const msg = direction === "next" ? "далее" : "назад";
+  appendMessage("user", direction === "next" ? "→ Далее" : "← Назад");
+  try {
+    const res = await api("/api/onboarding/message", {
+      method: "POST",
+      body: JSON.stringify({ session_id: state.onboardingSession, message: msg }),
+    });
+    if (direction === "next" && res.current_step === res.total_steps && res.current_step === state._onboardingTotal) {
+      appendMessage("bot", res.reply || res.body || "Онбординг завершён!");
+      exitOnboarding();
+      return;
+    }
+    updateOnboardingPanel(res);
+    appendMessage("bot", res.reply || res.body || `**${res.title}**\n\n${res.body}`);
+  } catch (err) {
+    console.error("Onboarding nav error:", err);
+    appendMessage("system", "Ошибка навигации.");
+  }
+}
+
+async function sendOnboardingMessage(text) {
+  try {
+    const res = await api("/api/onboarding/message", {
+      method: "POST",
+      body: JSON.stringify({ session_id: state.onboardingSession, message: text }),
+    });
+    if (res.current_step && res.total_steps) {
+      updateOnboardingPanel(res);
+    }
+    return res.reply || "Продолжаем...";
+  } catch (err) {
+    console.error("Onboarding message error:", err);
+    return "Ошибка связи. Попробуй ещё раз.";
+  }
+}
+
+document.getElementById("onboarding-prev").addEventListener("click", () => onboardingNavigate("prev"));
+document.getElementById("onboarding-next").addEventListener("click", () => onboardingNavigate("next"));
+document.getElementById("onboarding-exit").addEventListener("click", () => {
+  exitOnboarding();
+  clearChat();
+});
+
 function saveToHistory(question) {
   state.chatHistory.push(question);
   if (state.chatHistory.length > 50) state.chatHistory.shift();
@@ -262,6 +420,42 @@ function saveToHistory(question) {
 async function submitQuestion(question) {
   appendMessage("user", question);
   saveToHistory(question);
+
+  const onboardingCmd = question.trim().toLowerCase();
+  if (onboardingCmd === "/exit" || onboardingCmd === "/quit" || onboardingCmd === "выйти") {
+    state.onboardingSession = null;
+  }
+
+  if (state.onboardingSession && !question.startsWith("/")) {
+    showTyping();
+    updateStatus("🧑‍🏫 Онбординг...");
+    try {
+      const reply = await sendOnboardingMessage(question);
+      hideTyping();
+      appendMessage("bot", reply);
+      updateStatus("✅ Онбординг");
+      hideStatus(4000);
+    } catch (err) {
+      hideTyping();
+      appendMessage("system", `Ошибка: ${err.message}`);
+    }
+    return;
+  }
+
+  const cmd = question.trim().toLowerCase();
+  if (cmd === "/onboard" || cmd === "\\onboard") {
+    startOnboarding();
+    return;
+  }
+  if (cmd === "/help" || cmd === "\\help") {
+    document.getElementById("help-modal").classList.remove("hidden");
+    return;
+  }
+  if (cmd === "/start" || cmd === "\\start") {
+    clearChat();
+    return;
+  }
+
   showTyping();
   const t0 = Date.now();
   showStatus("🔍 Ищу релевантные документы...");
@@ -534,7 +728,8 @@ async function renderPdfViewer(container, url, targetPage, filename) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/vendor/pdfjs/pdf.worker.min.js";
 
   let pdf = null;
-  let pageNum = targetPage && targetPage > 0 ? targetPage : 1;
+  const tp = parseInt(targetPage, 10);
+  let pageNum = Number.isFinite(tp) && tp > 0 ? tp : 1;
 
   const canvas = document.getElementById("pdf-canvas");
   const ctx = canvas.getContext("2d");
@@ -1081,6 +1276,23 @@ document.querySelectorAll(".cmd-btn").forEach((btn) => {
           state.historyIndex = state.chatHistory.length - 2;
           input.value = state.chatHistory[state.historyIndex] || "";
         }
+        break;
+      case "/help":
+        document.getElementById("help-modal").classList.remove("hidden");
+        break;
+      case "/faq":
+        input.value = "/faq";
+        document.getElementById("send-btn").click();
+        break;
+      case "/contact":
+        input.value = "/contact";
+        document.getElementById("send-btn").click();
+        break;
+      case "/onboard":
+        startOnboarding();
+        break;
+      case "/start":
+        clearChat();
         break;
       default:
         input.value = cmd;

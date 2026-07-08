@@ -10,6 +10,7 @@ from factory_assistant.config import Settings, settings
 from factory_assistant.documents import delete_document, save_upload
 from factory_assistant.ingest import CATEGORY_KEYWORDS, build_vectorstore, ingest_documents
 from factory_assistant.rag import RagEngine
+from factory_assistant.onboarding import OnboardingManager
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,12 @@ class FactoryAssistantService:
         self._reindex_running = False
         self._reindex_last: dict | None = None
         self._reindex_thread: threading.Thread | None = None
+        self._onboarding: OnboardingManager | None = None
+
+    def _get_onboarding(self) -> OnboardingManager:
+        if self._onboarding is None:
+            self._onboarding = OnboardingManager(self.cfg)
+        return self._onboarding
 
     def get_config(self) -> dict:
         return {
@@ -373,3 +380,10 @@ class FactoryAssistantService:
             result = ingest_documents(cfg=self.cfg, recreate=False)
             self.rag._try_load_vectorstore()
         return result
+
+    def start_onboarding(self, session_id: str | None = None) -> dict:
+        session = self._get_onboarding().start_session(session_id)
+        return session.as_dict()
+
+    def onboarding_message(self, session_id: str, message: str) -> dict:
+        return self._get_onboarding().handle_message(session_id, message)

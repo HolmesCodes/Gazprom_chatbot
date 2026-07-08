@@ -26,6 +26,9 @@ NOT_FOUND_ANSWER = "Информация не найдена в базе зна�
 NOISE_KEYWORDS = {
     "логотип", "логотипы", "emblem", "logo", "brand", "шапка", "герб",
     "пуст", "бел", "фон", "заглуш", "placeholder", "пустое",
+    "подвал", "header", "footer", "колонтитул", "нумерация страниц",
+    "watermark", "водяной знак", "подпись", "угловой штамп",
+    "декоратив", "орнамент", "рамка", "подложк",
 }
 
 _image_cache: dict[str, tuple[bool, int]] = {}
@@ -105,17 +108,27 @@ def _check_image(full: Path) -> tuple[bool, int]:
     return (exists, size)
 
 
-def _is_relevant_image(desc: str, question: str, answer: str) -> bool:
+TECHNICAL_IMAGE_TYPES = {"схем", "диаграмм", "график", "таблиц", "чертеж", "рисунк", "изображен"}
+
+def _is_relevant_image(desc: str, answer: str) -> bool:
     if _is_noise_image(desc):
         return False
-    if len(desc) < 20:
+    if len(desc) < 15:
         return False
-    combined = f"{question} {answer}".lower()
     desc_lower = desc.lower()
-    words = set(re.findall(r"[а-яёa-z]{4,}", combined))
+    words = set(re.findall(r"[а-яёa-z]{4,}", answer.lower()))
     desc_words = set(re.findall(r"[а-яёa-z]{4,}", desc_lower))
     overlap = words & desc_words
-    return len(overlap) >= 2
+    if len(overlap) >= 2:
+        return True
+    if len(overlap) >= 1 and any(t in desc_lower for t in TECHNICAL_IMAGE_TYPES):
+        return True
+    return False
+
+VISUAL_TRIGGERS = {"схем", "рисунк", "диаграмм", "график", "таблиц", "чертеж", "изображен", "фотографи"}
+
+def _answer_mentions_visual(answer: str) -> bool:
+    return any(t in answer.lower() for t in VISUAL_TRIGGERS)
 
 
 def format_source(doc: Document) -> SourceReference:
@@ -332,7 +345,7 @@ class RagEngine:
             src.image_descriptions = {}
 
         seen_hashes: dict[str, str] = {}
-        min_size = 3000
+        min_size = 2000
 
         merged_images: dict[tuple[str, int | None], list[str]] = {}
         for doc in candidate_docs:
@@ -354,7 +367,14 @@ class RagEngine:
                     continue
 
                 desc = all_image_descriptions.get(img_path, "")
-                if not _is_relevant_image(desc, question, answer):
+                if not desc.strip():
+                    if not _answer_mentions_visual(answer):
+                        logger.info("Image filtered (no desc, answer has no visual triggers): %s", img_path)
+                        continue
+                    if size < 20000:
+                        logger.info("Image filtered (no desc, too small for visual answer): %s (size=%d)", img_path, size)
+                        continue
+                elif not _is_relevant_image(desc, answer):
                     logger.info("Image filtered (relevance): %s", img_path)
                     continue
                 if mentioned_images and img_path not in mentioned_images:

@@ -79,6 +79,15 @@ class AuthCreateUserRequest(BaseModel):
     role: str = "user"
 
 
+class OnboardingStartRequest(BaseModel):
+    session_id: str | None = None
+
+
+class OnboardingMessageRequest(BaseModel):
+    session_id: str
+    message: str = Field(min_length=1, max_length=2000)
+
+
 def _get_service() -> FactoryAssistantService:
     if service is None:
         raise HTTPException(status_code=503, detail="Сервис ещё не инициализирован")
@@ -296,6 +305,20 @@ def admin_delete_user(username: str, auth: str = Header("")) -> dict:
     except (PermissionError, ValueError) as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+# Onboarding endpoints
+@app.post("/api/onboarding/start")
+def onboarding_start(payload: OnboardingStartRequest) -> dict:
+    return _get_service().start_onboarding(payload.session_id)
+
+
+@app.post("/api/onboarding/message")
+def onboarding_message(payload: OnboardingMessageRequest) -> dict:
+    try:
+        return _get_service().onboarding_message(payload.session_id, payload.message)
+    except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
 

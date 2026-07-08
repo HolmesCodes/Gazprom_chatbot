@@ -102,12 +102,13 @@ body {
 #screen-login.hidden { display: none !important; }
 
 .login-container {
-  width: 1440px;
+  width: 480px;
   max-width: 100%;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
 }
 
 .login-content {
@@ -116,13 +117,13 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 30px;
+  gap: 24px;
   padding: 40px 20px;
 }
 
 .login-circle-top {
-  width: 400px;
-  height: 400px;
+  width: 220px;
+  height: 220px;
   border-radius: 50%;
   background: #f0f0f0;
   display: flex;
@@ -130,52 +131,52 @@ body {
   justify-content: center;
   flex-shrink: 0;
 }
-.login-circle-top svg { width: 200px; height: 200px; }
+.login-circle-top svg { width: 110px; height: 117px; }
 
 .login-title {
   font-family: 'Poppins', sans-serif;
   font-weight: 600;
-  font-size: 20px;
+  font-size: 18px;
   color: #0C407A;
   text-align: center;
 }
 
 .login-bg {
-  width: 825px;
+  width: 480px;
   max-width: 100%;
   background: #1A75BB;
-  border-radius: 100px;
-  padding: 48px 80px;
+  border-radius: 60px;
+  padding: 36px 48px;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
 .login-field {
-  width: 619px;
+  width: 380px;
   max-width: 100%;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .login-label {
   display: block;
   font-family: 'Poppins', sans-serif;
   font-weight: 600;
-  font-size: 20px;
+  font-size: 16px;
   color: white;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .login-input {
   width: 100%;
-  height: 74px;
+  height: 56px;
   background: #B1EFFF;
   border: none;
-  border-radius: 15px;
-  padding: 0 20px;
+  border-radius: 12px;
+  padding: 0 16px;
   font-family: 'Poppins', sans-serif;
   font-weight: 600;
-  font-size: 20px;
+  font-size: 16px;
   color: #0C407A;
   outline: none;
 }
@@ -191,17 +192,18 @@ body {
 
 .login-buttons {
   width: 100%;
-  max-width: 1440px;
+  max-width: 480px;
   display: flex;
   justify-content: space-between;
-  padding: 20px 68px 40px;
+  padding: 0 0 20px;
   flex-shrink: 0;
+  gap: 20px;
 }
 
 .btn {
   font-family: 'Poppins', sans-serif;
   font-weight: 600;
-  font-size: 20px;
+  font-size: 18px;
   border: none;
   cursor: pointer;
   transition: opacity 0.2s, background 0.2s;
@@ -213,21 +215,21 @@ body {
 .btn:hover { opacity: 0.85; }
 
 .btn-back {
-  width: 370px;
-  height: 80px;
+  flex: 1;
+  height: 60px;
   background: #B1EFFF;
   color: #1A75BB;
   border-radius: 100px;
-  font-size: 36px;
+  font-size: 18px;
 }
 
 .btn-next {
-  width: 370px;
-  height: 80px;
+  flex: 1;
+  height: 60px;
   background: #B1EFFF;
   color: #1A75BB;
   border-radius: 100px;
-  font-size: 36px;
+  font-size: 18px;
 }
 
 .btn-next:hover, .btn-back:hover { background: #1A75BB; color: #B1EFFF; }
@@ -245,7 +247,7 @@ body {
 .welcome-container {
   width: 1440px;
   max-width: 100%;
-  min-height: 1024px;
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -258,43 +260,43 @@ body {
   max-width: 700px;
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: 24px;
 }
 
 .welcome-title {
   font-family: 'Poppins', sans-serif;
   font-weight: 600;
-  font-size: 40px;
+  font-size: 36px;
   color: #0C407A;
 }
 
 .welcome-text {
   font-family: 'Poppins', sans-serif;
   font-weight: 600;
-  font-size: 20px;
+  font-size: 18px;
   color: #0C407A;
   line-height: 1.6;
 }
 
 .btn-primary {
-  width: 660px;
+  width: 480px;
   max-width: 100%;
-  height: 100px;
+  height: 70px;
   background: #B1EFFF;
   color: #0C407A;
   border-radius: 100px;
-  font-size: 20px;
+  font-size: 18px;
 }
 .btn-primary:hover { background: #1A75BB; color: #B1EFFF; }
 
 .btn-secondary {
-  width: 660px;
+  width: 480px;
   max-width: 100%;
-  height: 100px;
+  height: 70px;
   background: #B1EFFF;
   color: #0C407A;
   border-radius: 100px;
-  font-size: 20px;
+  font-size: 18px;
 }
 .btn-secondary:hover { background: #1A75BB; color: #B1EFFF; }
 
@@ -304,7 +306,7 @@ body {
   align-items: center;
   justify-content: center;
 }
-.welcome-right svg { width: 200px; height: auto; }
+.welcome-right svg { width: 160px; height: auto; }
 
 .sofiya-hero {
   display: flex;
@@ -313,8 +315,8 @@ body {
   gap: 16px;
 }
 .sofiya-avatar {
-  width: 160px;
-  height: 160px;
+  width: 140px;
+  height: 140px;
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   border-radius: 50%;
   display: flex;
@@ -322,28 +324,28 @@ body {
   justify-content: center;
   box-shadow: 0 8px 32px rgba(26, 117, 187, 0.4);
 }
-.sofiya-avatar svg { width: 130px; height: 130px; }
+.sofiya-avatar svg { width: 110px; height: 110px; }
 .sofiya-label {
   font-family: 'Poppins', sans-serif;
   font-weight: 700;
-  font-size: 18px;
+  font-size: 16px;
   color: var(--text-dark);
 }
 
 .register-form {
   margin-top: 20px;
-  padding: 30px;
+  padding: 24px;
   background: #f0f8ff;
-  border-radius: 30px;
+  border-radius: 24px;
 }
 .register-form.hidden { display: none; }
 
 .register-title {
   font-family: 'Poppins', sans-serif;
   font-weight: 600;
-  font-size: 24px;
+  font-size: 22px;
   color: #0C407A;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 /* ====== LOGO ====== */
@@ -547,19 +549,19 @@ body {
 }
 
 .source-categories {
-  padding: 10px;
+  padding: 6px 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .src-cat {
-  padding: 10px 16px;
+  padding: 7px 12px;
   border-radius: var(--radius-sm);
   font-family: 'Poppins', sans-serif;
   font-weight: 600;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--cmd-text);
   background: var(--light);
   cursor: pointer;
@@ -596,16 +598,17 @@ body {
 }
 
 .sources-list {
-  flex: 1;
+  flex: 0 1 auto;
+  max-height: 120px;
   overflow-y: auto;
-  padding: 10px;
+  padding: 6px 10px;
 }
 
 .sources-empty {
   color: var(--muted-text);
-  font-size: 14px;
+  font-size: 12px;
   text-align: center;
-  padding: 32px 16px;
+  padding: 10px 8px;
   font-weight: 600;
 }
 
@@ -910,20 +913,37 @@ body {
 .msg-content table {
   border-collapse: collapse;
   width: 100%;
-  margin: 8px 0;
+  margin: 12px 0;
   font-size: 13px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(12, 64, 122, 0.08);
 }
 
 .msg-content th, .msg-content td {
   border: 1px solid var(--border);
-  padding: 6px 10px;
+  padding: 8px 12px;
   text-align: left;
 }
 
 .msg-content th {
-  background: rgba(26, 117, 187, 0.08);
+  background: rgba(26, 117, 187, 0.1);
   font-weight: 600;
   color: var(--primary);
+}
+
+.msg-content tbody tr:nth-child(even) {
+  background: rgba(26, 117, 187, 0.03);
+}
+
+.msg-content tbody tr:hover {
+  background: rgba(26, 117, 187, 0.06);
+}
+
+.msg-content table code {
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 3px;
 }
 
 .msg-content strong {
@@ -1334,8 +1354,8 @@ body {
 .commands-grid-left {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 4px;
+  padding: 6px 10px;
   border-top: 1px solid var(--border);
 }
 .commands-grid-left .cmd-btn {
@@ -1373,8 +1393,8 @@ body {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   border: none;
   border-radius: var(--radius-sm);
-  padding: 14px 20px;
-  margin: 12px;
+  padding: 12px 16px;
+  margin: 8px 10px;
   font-family: 'Poppins', sans-serif;
   font-weight: 700;
   font-size: 16px;
@@ -1909,15 +1929,18 @@ body {
 }
 
 @media (max-width: 900px) {
-  .login-circle-top { width: 260px; height: 260px; }
-  .login-circle-top svg { width: 130px; height: 130px; }
-  .login-bg { padding: 30px 30px; border-radius: 40px; }
-  .login-buttons { flex-direction: column; align-items: center; gap: 16px; padding: 20px; }
-  .btn-back, .btn-next { width: 100%; max-width: 370px; }
+  .login-circle-top { width: 160px; height: 160px; }
+  .login-circle-top svg { width: 80px; height: 85px; }
+  .login-bg { padding: 24px 24px; border-radius: 40px; }
+  .login-field { width: 100%; }
+  .login-buttons { flex-direction: column; align-items: center; gap: 12px; }
+  .btn-back, .btn-next { width: 100%; max-width: 320px; }
   .welcome-container { flex-direction: column; padding: 30px; }
-  .welcome-right svg { width: 280px; height: auto; }
+  .welcome-right svg { width: 200px; height: auto; }
   .welcome-title { font-size: 28px; }
-  .btn-primary, .btn-secondary { width: 100%; height: 70px; }
+  .btn-primary, .btn-secondary { width: 100%; height: 60px; }
+  .sofiya-avatar { width: 120px; height: 120px; }
+  .sofiya-avatar svg { width: 95px; height: 95px; }
 }
 
 @media (max-width: 1100px) {
@@ -1945,4 +1968,165 @@ body {
 }
 
 /* Misc */
+.source-link {
+  color: #1A75BB;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.source-link:hover {
+  opacity: 0.75;
+}
+
+/* ====== ONBOARDING LEFT PANEL ====== */
+.onboarding-header {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.onboarding-title {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--white-text);
+}
+.onboarding-step-counter {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  color: rgba(255,255,255,0.8);
+  background: rgba(255,255,255,0.15);
+  padding: 2px 10px;
+  border-radius: 12px;
+}
+.onboarding-progress-wrap {
+  height: 6px;
+  background: var(--light);
+  margin: 0;
+  border-radius: 0;
+  overflow: hidden;
+}
+.onboarding-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #4ade80, #22c55e);
+  border-radius: 0;
+  transition: width 0.4s ease;
+}
+.onboarding-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.onboarding-step-title {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-dark);
+  line-height: 1.3;
+}
+.onboarding-step-text {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.onboarding-nav {
+  display: flex;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+}
+.onboarding-btn {
+  flex: 1;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--light);
+  color: var(--cmd-text);
+}
+.onboarding-btn:hover:not(:disabled) {
+  background: var(--primary);
+  color: var(--white-text);
+}
+.onboarding-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.onboarding-btn-next {
+  background: var(--primary);
+  color: var(--white-text);
+}
+.onboarding-btn-next:hover:not(:disabled) {
+  background: var(--primary-dark);
+}
+.onboarding-exit {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 0 14px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg);
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--muted-text);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+.onboarding-exit:hover {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #dc2626;
+}
+
+.source-tooltip {
+  position: fixed;
+  z-index: 9999;
+  max-width: 360px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  box-shadow: 0 8px 24px rgba(12, 64, 122, 0.18);
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.source-tooltip .tip-filename {
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 2px;
+  font-size: 11px;
+}
+.source-tooltip .tip-page {
+  color: var(--primary-dark);
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.source-tooltip .tip-excerpt {
+  color: #555;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
 .hidden { display: none !important; }

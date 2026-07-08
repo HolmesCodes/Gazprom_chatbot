@@ -8,6 +8,7 @@ from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 
 from factory_assistant.config import Settings, settings
 from factory_assistant.ingest import load_documents
@@ -98,13 +99,7 @@ class OnboardingManager:
         self.cfg = cfg or settings
         self.steps = load_onboarding_steps(self.cfg)
         self.sessions: dict[str, OnboardingSession] = {}
-        self.llm = ChatOllama(
-            model=self.cfg.llm_model,
-            base_url=self.cfg.ollama_base_url,
-            temperature=0.2,
-            num_ctx=4096,
-            keep_alive="24h",
-        )
+        self.llm = self._create_llm()
         self.prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", ONBOARDING_SYSTEM_PROMPT),
@@ -118,6 +113,24 @@ class OnboardingManager:
             ]
         )
         self.chain = self.prompt | self.llm | StrOutputParser()
+
+    def _create_llm(self):
+        if self.cfg.llm_provider == "openai" and self.cfg.llm_api_base_url:
+            base_url = self.cfg.llm_api_base_url.strip().rstrip("/")
+            return ChatOpenAI(
+                model=self.cfg.llm_model,
+                base_url=base_url,
+                api_key=self.cfg.llm_api_key or "sk-placeholder",
+                temperature=0.1,
+                max_tokens=1024,
+            )
+        return ChatOllama(
+            model=self.cfg.llm_model,
+            base_url=self.cfg.ollama_base_url,
+            temperature=0.2,
+            num_ctx=4096,
+            keep_alive="24h",
+        )
 
     def start_session(self, session_id: str | None = None) -> OnboardingSession:
         session_id = session_id or str(uuid4())
@@ -176,13 +189,7 @@ class OnboardingManager:
 
     def update_llm_model(self, model: str) -> None:
         self.cfg.llm_model = model
-        self.llm = ChatOllama(
-            model=model,
-            base_url=self.cfg.ollama_base_url,
-            temperature=0.2,
-            num_ctx=4096,
-            keep_alive="24h",
-        )
+        self.llm = self._create_llm()
         self.chain = self.prompt | self.llm | StrOutputParser()
 
     def _advance(self, session: OnboardingSession) -> str:

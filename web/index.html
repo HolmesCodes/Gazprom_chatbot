@@ -135,36 +135,61 @@
 
   <!-- LEFT PANEL -->
   <aside class="panel panel-left" id="left-panel">
-    <div class="panel-left-header">
-      <span class="panel-left-title">Использованные источники</span>
+    <!-- Sources mode -->
+    <div id="left-panel-sources">
+      <div class="panel-left-header">
+        <span class="panel-left-title">Использованные источники</span>
+      </div>
+      <div class="source-categories" id="source-categories">
+        <div class="src-cat" data-cat="tech_cards">Технические карты</div>
+        <div class="src-cat src-cat-dark" data-cat="instructions">Инструкции</div>
+        <div class="src-cat" data-cat="regulations">Регламенты</div>
+        <div class="src-cat src-cat-dark" data-cat="sop">Справочники (SOP)</div>
+        <div class="src-cat" data-cat="normative">Нормативные документы</div>
+        <div class="src-cat src-cat-dark" data-cat="safety">Охрана труда</div>
+      </div>
+      <div id="sources-list" class="sources-list">
+        <div class="sources-empty">Выберите категорию или задайте вопрос</div>
+      </div>
+      <div class="commands-grid-left">
+        <button class="cmd-btn" data-cmd="/start">/start</button>
+        <button class="cmd-btn" data-cmd="/onboard">/onboard</button>
+        <button class="cmd-btn" data-cmd="/back">/back</button>
+        <button class="cmd-btn" data-cmd="/by_type">/by_type</button>
+        <button class="cmd-btn" data-cmd="/search">/search</button>
+        <button class="cmd-btn" data-cmd="/by_date">/by_date</button>
+        <button class="cmd-btn" data-cmd="/recent">/recent</button>
+        <button class="cmd-btn" data-cmd="/help">/help</button>
+        <button class="cmd-btn" data-cmd="/faq">/faq</button>
+        <button class="cmd-btn" data-cmd="/contact">/contact</button>
+      </div>
+      <button class="new-chat-btn" id="new-chat-btn">
+        <span>＋</span> Новый чат
+      </button>
+      <div id="search-bar" class="search-bar hidden">
+        <input type="text" id="search-input" placeholder="Поиск документов..." autocomplete="off">
+        <button id="search-go">Найти</button>
+      </div>
     </div>
-    <div class="source-categories" id="source-categories">
-      <div class="src-cat" data-cat="tech_cards">Технические карты</div>
-      <div class="src-cat src-cat-dark" data-cat="instructions">Инструкции</div>
-      <div class="src-cat" data-cat="regulations">Регламенты</div>
-      <div class="src-cat src-cat-dark" data-cat="sop">Справочники (SOP)</div>
-      <div class="src-cat" data-cat="normative">Нормативные документы</div>
-      <div class="src-cat src-cat-dark" data-cat="safety">Охрана труда</div>
-    </div>
-    <div id="sources-list" class="sources-list">
-      <div class="sources-empty">Выберите категорию или задайте вопрос</div>
-    </div>
-    <div class="commands-grid-left">
-      <button class="cmd-btn" data-cmd="/start">/start</button>
-      <button class="cmd-btn" data-cmd="/onboard">/onboard</button>
-      <button class="cmd-btn" data-cmd="/back">/back</button>
-      <button class="cmd-btn" data-cmd="/by_type">/by_type</button>
-      <button class="cmd-btn" data-cmd="/search">/search</button>
-      <button class="cmd-btn" data-cmd="/by_date">/by_date</button>
-      <button class="cmd-btn" data-cmd="/recent">/recent</button>
-      <button class="cmd-btn" data-cmd="/help">/help</button>
-    </div>
-    <button class="new-chat-btn" id="new-chat-btn">
-      <span>＋</span> Новый чат
-    </button>
-    <div id="search-bar" class="search-bar hidden">
-      <input type="text" id="search-input" placeholder="Поиск документов..." autocomplete="off">
-      <button id="search-go">Найти</button>
+
+    <!-- Onboarding mode -->
+    <div id="left-panel-onboarding" class="hidden">
+      <div class="onboarding-header">
+        <span class="onboarding-title">🧭 Онбординг</span>
+        <span id="onboarding-step-counter" class="onboarding-step-counter">1/9</span>
+      </div>
+      <div class="onboarding-progress-wrap">
+        <div id="onboarding-progress-bar" class="onboarding-progress-bar" style="width:11%"></div>
+      </div>
+      <div id="onboarding-body" class="onboarding-body">
+        <div class="onboarding-step-title" id="onboarding-step-title">Знакомство с Софией</div>
+        <div class="onboarding-step-text" id="onboarding-step-text"></div>
+      </div>
+      <div class="onboarding-nav">
+        <button class="onboarding-btn" id="onboarding-prev" disabled>← Назад</button>
+        <button class="onboarding-btn onboarding-btn-next" id="onboarding-next">Далее →</button>
+      </div>
+      <button class="onboarding-exit" id="onboarding-exit">✕ Выйти из онбординга</button>
     </div>
   </aside>
 
@@ -196,8 +221,8 @@
             </svg>
           </div>
           <div class="welcome-bubble">
-            <p>Для удобной работы со мной можно воспользоваться панелью справа «Меню команд»:</p>
-            <p>/start · /onboard · /back · /by_type · /help · /by_date · /search · /recent · /faq · /contact</p>
+            <p><strong>Привет!</strong> Я София — твой помощник по документам.</p>
+            <p>Новичкам → <strong>/onboard</strong>. Специалистам → задавай вопрос.</p>
           </div>
         </div>
         <div class="welcome-row">
@@ -213,12 +238,27 @@
             </svg>
           </div>
           <div class="welcome-bubble">
-            <p>Отвечая на вопросы, я использую предоставленные компанией документы.</p>
-            <p>Для нахождения источника информации можно воспользоваться панелью слева «Использованные источники» (технические карты, инструкции, регламенты, справочники SOP).</p>
+            <p>Команды: <strong>/start</strong> <strong>/onboard</strong> <strong>/back</strong> <strong>/help</strong> <strong>/search</strong> <strong>/faq</strong></p>
+          </div>
+        </div>
+        <div class="welcome-row">
+          <div class="sofa-avatar">
+            <svg width="48" height="48" viewBox="0 0 80 80" fill="none">
+              <ellipse cx="39" cy="40.5" rx="39" ry="40.5" fill="#1A76B9"/>
+              <ellipse cx="38.5" cy="41" rx="30.5" ry="31" fill="white"/>
+              <ellipse cx="26.5" cy="43" rx="4.5" ry="5" fill="#D25332"/>
+              <ellipse cx="50.5" cy="43" rx="4.5" ry="5" fill="#D25332"/>
+              <path d="M30.696 0.5L28.9313 8.35455L25.4019 13.5909L17.9019 19.2636L11.2843 22.7545L5.54899 24.5H0.696045L2.46075 19.2636L5.54899 13.5909L9.51957 9.22727L13.9313 5.3L19.2255 2.68182L25.4019 0.5H30.696Z" fill="#D25332" transform="translate(7, 11)"/>
+              <path d="M0.614258 0.5L2.37896 9.00909L5.90838 14.6818L13.4084 20.8273L20.026 24.6091L25.7613 26.5H30.6143L28.8496 20.8273L25.7613 14.6818L21.7907 9.95455L17.379 5.7L12.0848 2.86364L5.90838 0.5H0.614258Z" fill="#D25332" transform="translate(38, 11)"/>
+              <path d="M1.28198 0.882324C1.28198 0.882324 8.10016 12.1323 16.282 0.882324" stroke="#D25332" stroke-width="3" fill="none" transform="translate(31, 59)"/>
+            </svg>
+          </div>
+          <div class="welcome-bubble">
+            <p>Источники ответов — в левой панели.</p>
           </div>
         </div>
         <div class="example-question" id="example-question">
-          Какая норма затяжки болтов на узле А?
+          Схема строповки ёмкости с проушинами
         </div>
       </div>
     </div>
@@ -281,18 +321,21 @@
     </div>
     <div class="modal-body help-body">
       <h3>Как пользоваться Софией</h3>
-      <p>Задавайте вопросы по производственной документации на русском языке.</p>
+      <p>Задавай вопросы по производственной документации на русском языке.</p>
       <p><strong>Команды:</strong></p>
       <ul>
-        <li><code>/onboard</code> — адаптация нового сотрудника</li>
+        <li><code>/start</code> — начать диалог с ботом</li>
+        <li><code>/onboard</code> — запустить вводный сценарий обучения</li>
+        <li><code>/back</code> — вернуться на предыдущий шаг</li>
         <li><code>/search</code> — поиск по документам</li>
-        <li><code>/recent</code> — последние документы</li>
         <li><code>/by_type</code> — документы по типу</li>
+        <li><code>/by_date</code> — документы по дате</li>
+        <li><code>/recent</code> — последние документы</li>
         <li><code>/faq</code> — часто задаваемые вопросы</li>
-        <li><code>/contact</code> — контакты</li>
+        <li><code>/contact</code> — контакты поддержки</li>
       </ul>
-      <p>Нажмите на источник в левой панели, чтобы открыть полный текст чанка.</p>
-      <p>Используйте 🎤 для голосового ввода.</p>
+      <p>Нажми на источник в левой панели, чтобы открыть полный текст чанка.</p>
+      <p>Используй 🎤 для голосового ввода.</p>
     </div>
   </div>
 </div>
@@ -425,6 +468,8 @@
     <div class="lightbox-excerpt" id="lightbox-excerpt"></div>
   </div>
 </div>
+
+<div id="source-tooltip" class="source-tooltip hidden"></div>
 
 <script src="/static/vendor/pdfjs/pdf.min.js"></script>
 <script src="/static/app.js"></script>
