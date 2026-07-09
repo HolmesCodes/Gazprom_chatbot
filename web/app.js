@@ -295,6 +295,11 @@ function updateStatus(text) {
   if (txt) txt.textContent = text;
 }
 
+function updateStatusStep(step) {
+  const stepEl = document.getElementById("status-step");
+  if (stepEl) stepEl.textContent = step;
+}
+
 function hideStatus(delay = 2000) {
   const bar = document.getElementById("status-bar");
   if (!bar) return;
@@ -459,13 +464,19 @@ async function submitQuestion(question) {
   showTyping();
   const t0 = Date.now();
   showStatus("🔍 Ищу релевантные документы...");
+  updateStatusStep("1/3");
   try {
-    await new Promise(r => setTimeout(r, 200));
-    updateStatus("📡 Отправляю запрос в API...");
+    await new Promise(r => setTimeout(r, 300));
+    updateStatus("📚 Поиск в базе знаний...");
+    updateStatusStep("2/3");
+    await new Promise(r => setTimeout(r, 1500));
+    updateStatus("🧠 Генерирую ответ нейросетью...");
+    updateStatusStep("3/3");
     const result = await api("/api/ask", {
       method: "POST",
       body: JSON.stringify({ question }),
     });
+    await new Promise(r => setTimeout(r, 800));
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     hideTyping();
     state.currentSources = result.sources;
@@ -481,6 +492,7 @@ async function submitQuestion(question) {
     parts.push(`${srcCount} ${declension(srcCount, "источник", "источника", "источников")}`);
     if (imgCount) parts.push(`${imgCount} ${declension(imgCount, "изображение", "изображения", "изображений")}`);
     updateStatus(`✅ Найдено: ${parts.join(" · ")} — ${elapsed}с`);
+    updateStatusStep("");
     hideStatus(4000);
     if (result.llm_model) {
       document.getElementById("chat-model-badge").textContent = `модель: ${result.llm_model}`;
@@ -488,6 +500,7 @@ async function submitQuestion(question) {
   } catch (err) {
     hideTyping();
     hideStatus(1000);
+    updateStatusStep("");
     appendMessage("system", `Ошибка: ${err.message}`);
   }
 }
